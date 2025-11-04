@@ -11,6 +11,7 @@ import { currentTheme } from "@/lib/theme-config"
 import { PlusCircle, Maximize, Minimize } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import AppHeader from "@/components/app-header"
+import { AnimatedBackground } from "@/components/animated-background"
 
 export default function GuestBookPage() {
   const [isCreatorOpen, setIsCreatorOpen] = useState(false)
@@ -61,11 +62,14 @@ export default function GuestBookPage() {
   }
 
   return (
-    <div className={`min-h-screen ${theme.background}`}>
+    <div className={`min-h-screen ${theme.background} relative overflow-hidden`}>
+      {/* Animated Background */}
+      <AnimatedBackground density="medium" />
+
       {/* Header - Hidden in fullscreen */}
       {!isFullscreen && <AppHeader pageType="guest-book" />}
 
-      <div className={`${isFullscreen ? 'h-screen flex items-center justify-center' : 'max-w-[1600px] mx-auto p-8'} space-y-6`}>
+      <div className={`${isFullscreen ? 'h-screen flex items-center justify-center' : 'max-w-[1600px] mx-auto p-8'} space-y-6 relative z-10`}>
         {/* Page Title & Actions */}
         {!isFullscreen && (
           <div className="flex items-center justify-between">
