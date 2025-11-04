@@ -100,11 +100,11 @@ export default function AppHeader({
                   >
                     {isScanner ? "QR Scanner" : "Admin Dashboard"}
                   </h1>
-                  <p className={`${config.ui.typography.sizes.xs} md:${config.ui.typography.sizes.sm} ${config.theme.text.secondary} truncate`}>
-                    {config.institution.name}
+                  <p className={`${config.ui.typography.sizes.xs} md:${config.ui.typography.sizes.sm} ${config.theme.text.secondary} font-bold truncate`}>
+                    {config.institution.subHeader}
                   </p>
                   <p className={`${config.ui.typography.sizes.xs} ${config.theme.text.muted} truncate`}>
-                    {config.institution.subHeader}
+                    {config.institution.slogan}
                   </p>
                 </div>
               </Link>

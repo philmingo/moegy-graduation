@@ -10,13 +10,13 @@
 // ==============================
 
 export const institution = {
-  name: "GOAL",
-  slogan: "Voice your graduates",
-  shortName: "GOAL", // For avatars, short references
-  fullDisplayName: "GOAL", // For formal displays
+  name: "CPCE",
+  slogan: "Educating, Empowering and Enriching Future Generations",
+  shortName: "CPCE", // For avatars, short references
+  fullDisplayName: "CPCE Graduation", // For formal displays
   graduationTitle: "", // MODIFIED: Remove "Graduation Ceremony"
   systemName: "Graduation System", // For admin headers
-  subHeader: "Guyana Online Academy of Learning", // NEW: Sub header for QR cards
+  subHeader: "Cyril Potter College of Education", // NEW: Sub header for QR cards
 }
 
 // ==============================

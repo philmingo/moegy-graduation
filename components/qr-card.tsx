@@ -87,21 +87,8 @@ export const QRCard = forwardRef<HTMLDivElement, QRCardProps>(
     // Handle download action
     const handleDownload = async () => {
       if (onDownload) {
-        try {
-          const cardImageUrl = await generateQrCardImage()
-          if (cardImageUrl) {
-            const link = document.createElement("a")
-            link.href = cardImageUrl
-            link.download = `${student.first_name}-${student.last_name}-QR.png`
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-            console.log("✅ [QR-CARD] QR card downloaded successfully")
-            onDownload()
-          }
-        } catch (error) {
-          console.error("❌ [QR-CARD] Error downloading QR card:", error)
-        }
+        // Delegate download to parent component which uses html-to-image for proper styling
+        onDownload()
       }
     }
 
@@ -155,12 +142,12 @@ export const QRCard = forwardRef<HTMLDivElement, QRCardProps>(
             <h3
               className={`${config.theme.qrCard.universityNameColor || "text-white"} ${modalConfig?.header?.title?.fontWeight || "font-bold"} text-center ${modalConfig?.header?.title?.lineHeight || "leading-tight"} ${isMobile ? "text-lg" : modalConfig?.header?.title?.textSize || "text-3xl"} ${modalConfig?.header?.title?.marginBottom || "mb-1"} ${modalConfig?.header?.title?.textShadow || "text-shadow-md"}`}
             >
-              {config.institution.name}
+              {config.institution.name} Graduation
             </h3>
             <p
-              className={`text-white text-center ${isMobile ? "text-xs" : modalConfig?.header?.subtitle?.textSize || "text-lg"} ${modalConfig?.header?.subtitle?.opacity || "opacity-90"} ${modalConfig?.header?.subtitle?.textShadow || "text-shadow-sm"}`}
+              className={`text-white text-center ${isMobile ? "text-[9px]" : "text-xs"} ${modalConfig?.header?.subtitle?.opacity || "opacity-90"} ${modalConfig?.header?.subtitle?.textShadow || "text-shadow-sm"} italic mt-1`}
             >
-              {config.institution.subHeader || "Graduation"}
+              {config.institution.slogan}
             </p>
           </div>
 
