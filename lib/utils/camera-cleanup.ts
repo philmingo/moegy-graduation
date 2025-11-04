@@ -27,10 +27,16 @@ const log = (message: string, data?: any) => {
  */
 export const stopMediaStream = (stream: MediaStream): void => {
   try {
-    stream.getTracks().forEach((track) => {
+    const tracks = stream.getTracks()
+    log(`Stopping ${tracks.length} media track(s)`)
+    
+    tracks.forEach((track) => {
+      log(`Track state before stop: ${track.readyState} (${track.kind}: ${track.label})`)
       if (track.readyState === 'live') {
         track.stop()
-        log(`Stopped track: ${track.label} (kind: ${track.kind})`)
+        log(`✓ Stopped track: ${track.label} (kind: ${track.kind})`)
+      } else {
+        log(`- Track already stopped: ${track.label}`)
       }
     })
   } catch (error) {
@@ -47,11 +53,13 @@ export const stopAllVideoElements = (): void => {
     const videoElements = document.querySelectorAll('video')
     log(`Found ${videoElements.length} video elements to cleanup`)
     
+    let stoppedCount = 0
     videoElements.forEach((videoElement, index) => {
       if (videoElement.srcObject instanceof MediaStream) {
         const stream = videoElement.srcObject
         stopMediaStream(stream)
         videoElement.srcObject = null
+        stoppedCount++
         log(`Cleaned up video element ${index + 1}`)
       }
       
@@ -60,6 +68,10 @@ export const stopAllVideoElements = (): void => {
         videoElement.pause()
       }
       
+      // Remove the video source
+      videoElement.removeAttribute('src')
+      videoElement.load()
+      
       // Remove event listeners by cloning (simple but effective)
       videoElement.onloadedmetadata = null
       videoElement.onplay = null
@@ -67,6 +79,10 @@ export const stopAllVideoElements = (): void => {
       videoElement.onerror = null
       videoElement.onabort = null
     })
+    
+    if (stoppedCount > 0) {
+      log(`Successfully stopped ${stoppedCount} video stream(s)`)
+    }
   } catch (error) {
     log("Error stopping video elements:", error)
   }
@@ -101,12 +117,18 @@ export const stopHtml5QrcodeScanner = async (
     ) {
       log("Stopping scanner...")
       
-      // Stop the scanner (this should stop the camera stream)
+      // CRITICAL: Stop the scanner (this should stop the camera stream)
       await instance.stop()
       log("Scanner stopped successfully")
       
+      // Immediately check for and stop video elements
+      stopAllVideoElements()
+      
       // Small delay to allow internal cleanup
       await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Check again after delay
+      stopAllVideoElements()
     } else {
       log(`Scanner not in active state, skipping stop()`)
     }
@@ -127,6 +149,30 @@ export const stopHtml5QrcodeScanner = async (
     // If stop() failed, we might still have active streams
     // Fall back to manual cleanup
     stopAllVideoElements()
+  }
+}
+
+/**
+ * Aggressive cleanup - stops ALL media tracks from all active streams
+ * This is a nuclear option when normal cleanup doesn't work
+ */
+export const stopAllMediaTracks = async (): Promise<void> => {
+  try {
+    // Get all media devices and stop their tracks
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      log("Performing aggressive media track cleanup")
+      
+      // Try to enumerate and stop all active tracks
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videoDevices = devices.filter(device => device.kind === 'videoinput')
+      log(`Found ${videoDevices.length} video input devices`)
+    }
+    
+    // Stop all video elements and their streams
+    stopAllVideoElements()
+    
+  } catch (error) {
+    log("Error in aggressive cleanup:", error)
   }
 }
 
@@ -152,7 +198,10 @@ export const cleanupCamera = async (
     // This catches any streams that Html5Qrcode didn't clean up
     stopAllVideoElements()
     
-    // Step 3: Small delay to ensure browser releases camera
+    // Step 3: Aggressive cleanup - stop all media tracks
+    await stopAllMediaTracks()
+    
+    // Step 4: Small delay to ensure browser releases camera
     await new Promise(resolve => setTimeout(resolve, 150))
     
     log("Camera cleanup completed successfully")
@@ -177,18 +226,27 @@ export const createReactCleanup = (
   clearUI: boolean = true
 ) => {
   return () => {
+    log("React cleanup triggered - component unmounting")
+    
+    // CRITICAL: Stop video elements BEFORE React removes them from DOM
+    stopAllVideoElements()
+    
     const instance = instanceRef.current
     instanceRef.current = null // Clear ref immediately
     
     // Run cleanup without blocking unmount
     if (instance) {
+      log("Cleaning up Html5Qrcode instance")
       cleanupCamera(instance, clearUI).catch((error) => {
         log("Cleanup error in React effect:", error)
       })
     }
     
-    // Also run immediate video cleanup
-    stopAllVideoElements()
+    // Run aggressive cleanup after a short delay to catch any stragglers
+    setTimeout(() => {
+      stopAllVideoElements()
+      stopAllMediaTracks()
+    }, 100)
   }
 }
 

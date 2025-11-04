@@ -41,7 +41,6 @@ export function GuestBookMessageCreator({
 
   // Handle QR scan
   const handleScan = useCallback((studentData: Student) => {
-    console.log("🎯 Student scanned:", studentData)
     setScannedStudent(studentData)
     setIsScannerActive(false)
     setStep("draw")
@@ -49,13 +48,11 @@ export function GuestBookMessageCreator({
 
   // Handle scan error
   const handleScanError = useCallback((error: string) => {
-    console.error("QR Scan error:", error)
     toast.error("Failed to scan QR code")
   }, [])
 
   // Handle camera stopped - properly manage state to prevent remount issues
   const handleCameraStopped = useCallback(() => {
-    console.log("📸 [GUESTBOOK] Camera stopped - deactivating scanner")
     setIsScannerActive(false)
   }, [])
 
@@ -94,21 +91,25 @@ export function GuestBookMessageCreator({
 
   // Handle close - reset all state
   const handleClose = () => {
-    console.log("📸 [GUESTBOOK] Closing dialog - resetting state")
+    // Deactivate scanner first to trigger camera cleanup
+    setIsScannerActive(false)
+    
+    // Reset all state
     setStep("scan")
     setScannedStudent(null)
     setImageData("")
-    setIsScannerActive(false) // Set to false first
     
-    // Small delay before closing to ensure camera cleanup completes
-    setTimeout(() => {
-      onOpenChange(false)
-      // Reset scanner active state after dialog closes
-      setTimeout(() => {
-        setIsScannerActive(true)
-      }, 100)
-    }, 50)
+    // Close dialog - camera cleanup will complete via onCameraStopped callback
+    onOpenChange(false)
   }
+  
+  // Reset scanner state when dialog reopens
+  useEffect(() => {
+    if (open) {
+      setIsScannerActive(true)
+      setStep("scan")
+    }
+  }, [open])
 
   // Handle cancel
   const handleCancel = () => {

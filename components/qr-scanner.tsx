@@ -41,6 +41,7 @@ interface QrScannerProps {
 export function QrScanner({ onScan, onError, className, onScanError, students, isActive = true, isSpeaking = false, onCameraStopped }: QrScannerProps) {
   const scannerContainerId = "qr-reader"
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null) // Store MediaStream reference
   const [cameraError, setCameraError] = useState(false)
   const [scanAttempts, setScanAttempts] = useState(0)
   const hasScannedRef = useRef(false)
@@ -68,6 +69,17 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
   const cornerBorderRGB = extractRGBFromTailwind(scannerTheme.corners.border)
   const regionBorderRGB = extractRGBFromTailwind(scannerTheme.region.border)
 
+  // Helper function to stop MediaStream tracks directly - wrapped in useCallback to prevent infinite loops
+  const stopMediaStreamTracks = useCallback(() => {
+    if (mediaStreamRef.current) {
+      const tracks = mediaStreamRef.current.getTracks()
+      tracks.forEach((track) => {
+        track.stop()
+      })
+      mediaStreamRef.current = null
+    }
+  }, [])
+
   // Reset scan state function
   const resetScanState = useCallback(() => {
     hasScannedRef.current = false
@@ -87,18 +99,32 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
   // Process scanned QR code with validation
   const processScannedQR = useCallback(
     (decodedText: string) => {
+      console.log("🔍 Processing QR code, students count:", students.length)
       try {
         // Step 1: Decrypt and validate QR code format
         const { isValid, studentData, error } = decryptQRData(decodedText)
+        console.log("🔍 QR decrypt result:", { isValid, studentData, error })
 
         if (!isValid) {
+          console.log("🔍 Invalid QR code detected")
           setInvalidQRMessage(`Invalid QR code: ${error}`)
           setShowInvalidQRDialog(true)
           return false
         }
 
         // Step 2: Validate student exists in database
-        if (!studentData || !validateStudentInDB(studentData.id, students)) {
+        if (!studentData) {
+          console.log("🔍 No student data from QR")
+          setInvalidQRMessage("Student not found in database")
+          setShowInvalidQRDialog(true)
+          return false
+        }
+        
+        const studentExists = validateStudentInDB(studentData.id, students)
+        console.log("🔍 Student exists in DB:", studentExists, "ID:", studentData.id)
+        
+        if (!studentExists) {
+          console.log("🔍 Student not found in database")
           setInvalidQRMessage("Student not found in database")
           setShowInvalidQRDialog(true)
           return false
@@ -106,17 +132,21 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
 
         // Step 3: Find full student data
         const fullStudentData = students.find((s) => s.id === studentData.id)
+        console.log("🔍 Full student data:", fullStudentData)
+        
         if (!fullStudentData) {
+          console.log("🔍 Could not retrieve full student data")
           setErrorMessage("Could not retrieve student information")
           setShowErrorDialog(true)
           return false
         }
 
         // Step 4: Process the student
+        console.log("🔍 Calling onScan with:", fullStudentData)
         onScan(fullStudentData)
         return true
       } catch (error) {
-        console.error("Error processing QR code:", error)
+        console.error("🔍 Error processing QR code:", error)
         setErrorMessage("Error processing QR code")
         setShowErrorDialog(true)
         return false
@@ -150,12 +180,9 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
       }
     }    // Local QR processing function
     const localProcessScannedQR = (decodedText: string) => {
-      console.log("🔍 [SCANNER] Processing QR code with text:", decodedText.substring(0, 50))
-      
       try {
         // Simple test for invalid QR (if it doesn't start with { it's probably invalid)
         if (!decodedText.startsWith('{')) {
-          console.log("🔍 [SCANNER] Simple invalid QR test triggered")
           setInvalidQRMessage("Invalid QR code format - not JSON")
           setShowInvalidQRDialog(true)
           
@@ -168,36 +195,31 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
 
         if (!isValid) {
           // Stop camera and show error dialog
-          console.log("🔍 [SCANNER] Invalid QR detected, showing dialog...")
           setInvalidQRMessage(`Invalid QR code: ${error}`)
           setShowInvalidQRDialog(true)
-            // Stop scanner without notifying parent (to keep component mounted)
+          
           // Use centralized cleanup for invalid QR
           const currentInstance = html5QrCodeRef.current
           if (currentInstance) {
-            cleanupCamera(currentInstance, false)
-              .then(() => {
-                console.log("Camera stopped for invalid QR - component stays mounted")
-              })
-              .catch((err) => {
-                console.warn("Error stopping camera:", err)
-              })
+            cleanupCamera(currentInstance, false).catch((err) => {
+              console.warn("Error stopping camera:", err)
+            })
           }
           
           return false
         }// Step 2: Validate student exists in database
         if (!studentData || !validateStudentInDB(studentData.id, students)) {
           // Stop camera and show error dialog
-          console.log("🔍 [SCANNER] Student not found, showing dialog...")
           setInvalidQRMessage("Student not found in database")
           setShowInvalidQRDialog(true)
           stopCameraAndCleanup()
           return false
-        }        // Step 3: Find full student data
+        }
+
+        // Step 3: Find full student data
         const fullStudentData = students.find((s) => s.id === studentData.id)
         if (!fullStudentData) {
           // Stop camera and show error dialog
-          console.log("🔍 [SCANNER] Student info not found, showing error dialog...")
           setErrorMessage("Could not retrieve student information")
           setShowErrorDialog(true)
           stopCameraAndCleanup()
@@ -206,14 +228,15 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
 
         // Step 4: Process the student
         onScan(fullStudentData)
-        return true      } catch (error) {
+        return true
+      } catch (error) {
         console.error("Error processing QR code:", error)
         // Stop camera and show error dialog
-        console.log("🔍 [SCANNER] Processing error, showing error dialog...")
         setErrorMessage("Error processing QR code")
         setShowErrorDialog(true)
         stopCameraAndCleanup()
-        return false      }
+        return false
+      }
     }
 
     // Create or clear the qr-reader element
@@ -234,16 +257,11 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
     const newScannerInstance = new Html5Qrcode(scannerContainerId, scannerConfig)
     html5QrCodeRef.current = newScannerInstance
 
-    // Start configuration - dynamic qrbox with minimum size constraint
+    // Start configuration - Industry standard fixed qrbox size
     const startConfig: Html5QrcodeCameraScanConfig = {
-      fps: 10, 
-      qrbox: (viewfinderWidth, viewfinderHeight) => {
-        const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-        const qrboxSize = Math.max(250, Math.floor(minEdge * 0.5)) // 50% of viewport, minimum 250px
-        return { width: qrboxSize, height: qrboxSize }
-      },
+      fps: 60, // Maximum FPS for fastest detection
+      qrbox: 250, // Fixed 250x250px box - industry standard, works on all screen sizes
       disableFlip: false,
-      aspectRatio: 1.0, // Square aspect ratio for the scanning box
     }    // Success callback
     const qrCodeSuccessCallback = async (decodedText: string, result: Html5QrcodeResult) => {
       if (hasScannedRef.current) {
@@ -252,12 +270,13 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
 
       // Block scanning if currently announcing
       if (isSpeaking) {
-        console.log("🔊 [SCANNER] Scan blocked - announcement in progress")
         return
       }
 
       hasScannedRef.current = true
-      console.log("🎯 [SCANNER] QR code detected and processing...")
+
+      // CRITICAL: Stop MediaStream tracks FIRST
+      stopMediaStreamTracks()
 
       // Stop the scanner immediately
       const currentInstance = html5QrCodeRef.current
@@ -266,7 +285,6 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
           const scannerState = currentInstance.getState()
           if (scannerState === Html5QrcodeScannerState.SCANNING || scannerState === Html5QrcodeScannerState.PAUSED) {
             await currentInstance.stop()
-            console.log("✅ [SCANNER] Scanner stopped")
           }
         } catch (err) {
           console.warn("Scanner stop warning:", err)
@@ -278,18 +296,15 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
 
       // Process the QR code
       const processResult = localProcessScannedQR(decodedText)
-      console.log("✅ [SCANNER] QR processing completed:", processResult ? "success" : "failed")
+      
+      // Notify parent component that camera has been stopped
+      if (processResult && onCameraStopped) {
+        onCameraStopped()
+      }
     }
 
     // Error callback
     const qrCodeErrorCallback = (errorMessage: string, error: any) => {
-      // Add debug logging to see if error callback is being called too much
-      if (!errorMessage.toLowerCase().includes("not found") && 
-          !errorMessage.toLowerCase().includes("no qr code found") &&
-          !errorMessage.toLowerCase().includes("no multiformat readers")) {
-        console.log("🔍 [DEBUG] Scanner error:", errorMessage.substring(0, 100))
-      }
-
       // Only handle critical errors
       const isCriticalError =
         errorMessage.includes("NotAllowedError") ||
@@ -324,12 +339,25 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
 
         try {
           await newScannerInstance.start(cameraConstraint, startConfig, qrCodeSuccessCallback, qrCodeErrorCallback)
-          console.log("Camera started successfully")
+          
+          // Capture MediaStream reference from video element
+          setTimeout(() => {
+            const videoElement = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement
+            if (videoElement && videoElement.srcObject instanceof MediaStream) {
+              mediaStreamRef.current = videoElement.srcObject
+            }
+          }, 100)
         } catch (envCameraError) {
-          console.log("Environment camera failed, trying user camera")
           cameraConstraint = { facingMode: "user" }
           await newScannerInstance.start(cameraConstraint, startConfig, qrCodeSuccessCallback, qrCodeErrorCallback)
-          console.log("User camera started successfully")
+          
+          // Capture MediaStream reference from video element
+          setTimeout(() => {
+            const videoElement = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement
+            if (videoElement && videoElement.srcObject instanceof MediaStream) {
+              mediaStreamRef.current = videoElement.srcObject
+            }
+          }, 100)
         }
       } catch (err: any) {
         const errMsg = err instanceof Error ? err.message : String(err)
@@ -351,23 +379,40 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
     initializeScanner()
 
     // Cleanup function using centralized utility
-    return createReactCleanup(html5QrCodeRef, true)
+    return () => {
+      // CRITICAL: Stop MediaStream tracks FIRST before anything else
+      if (mediaStreamRef.current) {
+        const tracks = mediaStreamRef.current.getTracks()
+        tracks.forEach((track) => {
+          track.stop()
+        })
+        mediaStreamRef.current = null
+      }
+      
+      // Then run standard cleanup
+      const cleanup = createReactCleanup(html5QrCodeRef, true)
+      cleanup()
+    }
   }, [scannerKey, isActive])
   // External control effect - using centralized cleanup
   useEffect(() => {
     if (!isActive && html5QrCodeRef.current) {
-      console.log("External stop requested")
+      // CRITICAL: Stop MediaStream tracks FIRST
+      stopMediaStreamTracks()
+      
       const instance = html5QrCodeRef.current
       html5QrCodeRef.current = null
       
       // Use centralized cleanup for external stop
+      // Note: We don't call onCameraStopped here to avoid infinite loops
+      // onCameraStopped should only be called from successful scan callback
       cleanupCamera(instance, true).catch((error) => {
         console.error("Error during external stop cleanup:", error)
       })
     } else if (isActive) {
       hasScannedRef.current = false
     }
-  }, [isActive])
+  }, [isActive, stopMediaStreamTracks])
 
   // Suppress Html5Qrcode camera abort warnings
   useEffect(() => {
