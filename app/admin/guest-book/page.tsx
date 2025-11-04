@@ -45,7 +45,6 @@ export default function GuestBookPage() {
           table: "voceo_guest_book_messages",
         },
         () => {
-          console.log("🔄 Guest book message changed, refetching...")
           refetchMessages()
         }
       )

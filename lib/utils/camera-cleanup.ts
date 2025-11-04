@@ -16,9 +16,11 @@ import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode"
 
 /**
  * Logger utility for debugging camera operations
+ * Set to no-op for production (uncomment console.log to enable debugging)
  */
 const log = (message: string, data?: any) => {
-  console.log(`[CameraCleanup ${new Date().toISOString()}]`, message, data || "")
+  // Uncomment the line below for debugging:
+  // console.log(`[CameraCleanup ${new Date().toISOString()}]`, message, data || "")
 }
 
 /**

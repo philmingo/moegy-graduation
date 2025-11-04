@@ -12,6 +12,7 @@ import {
 import { currentTheme } from "@/lib/theme-config"
 import { AlertTriangle } from "lucide-react"
 import { decryptQRData, validateStudentInDB } from "@/lib/qr-utils"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +41,7 @@ interface QrScannerProps {
 
 export function QrScanner({ onScan, onError, className, onScanError, students, isActive = true, isSpeaking = false, onCameraStopped }: QrScannerProps) {
   const scannerContainerId = "qr-reader"
+  const isMobile = useIsMobile()
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null) // Store MediaStream reference
   const [cameraError, setCameraError] = useState(false)
@@ -259,7 +261,7 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
 
     // Start configuration - Industry standard fixed qrbox size
     const startConfig: Html5QrcodeCameraScanConfig = {
-      fps: 60, // Maximum FPS for fastest detection
+      fps: isMobile ? 60 : 30, // 60 FPS on mobile, 30 FPS on desktop
       qrbox: 250, // Fixed 250x250px box - industry standard, works on all screen sizes
       disableFlip: false,
     }    // Success callback
