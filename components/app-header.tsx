@@ -19,6 +19,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { useState } from "react"
 import config from "@/lib/theme-config"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { createClient } from "@/lib/supabase"
 
 interface ConnectedMobileDevice {
   id?: string
@@ -55,17 +56,43 @@ export default function AppHeader({
   const { toast } = useToast()
   const isMobile = useIsMobile()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
-  const handleLogout = () => {
-    localStorage.removeItem("isAuthenticated")
-    toast({
-      title: "Logged out",
-      description: "You have been successfully logged out.",
-    })
-    if (pageType === "scanner") {
-      router.push("/login")
-    } else {
-      window.location.href = "/login"
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      console.log("🚪 [LOGOUT] Starting logout process...")
+      
+      const supabase = createClient()
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error("❌ [LOGOUT] Error:", error.message)
+        toast({
+          title: "Logout Error",
+          description: error.message,
+          variant: "destructive",
+        })
+      } else {
+        console.log("✅ [LOGOUT] Successfully logged out")
+        toast({
+          title: "Logged out",
+          description: "You have been successfully logged out.",
+        })
+        
+        // Redirect to login page using Next.js router
+        console.log("🚪 [LOGOUT] Redirecting to login page...")
+        router.push("/login")
+      }
+    } catch (error) {
+      console.error("❌ [LOGOUT] Unexpected error:", error)
+      toast({
+        title: "Logout Error",
+        description: "An unexpected error occurred during logout.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoggingOut(false)
     }
   }
 
@@ -227,10 +254,11 @@ export default function AppHeader({
               <Button
                 variant="signout"
                 onClick={handleLogout}
-                className="!text-white hover:!bg-red-500 hover:!text-white flex-shrink-0"
+                disabled={isLoggingOut}
+                className="!text-white hover:!bg-red-500 hover:!text-white flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <LogOut className="h-4 w-4 lg:mr-2" />
-                <span className="hidden lg:inline">Sign Out</span>
+                <span className="hidden lg:inline">{isLoggingOut ? "Signing Out..." : "Sign Out"}</span>
               </Button>
             </div>
 
@@ -552,7 +580,8 @@ export default function AppHeader({
           <div className="p-6 border-t border-white/10">
             <button
               onClick={handleLogout}
-              className={`w-full ${config.theme.glass.light} hover:bg-red-500/20 border border-red-500/30 rounded-xl p-4 transition-all duration-200 group`}
+              disabled={isLoggingOut}
+              className={`w-full ${config.theme.glass.light} hover:bg-red-500/20 border border-red-500/30 rounded-xl p-4 transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-r from-red-500 to-red-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
@@ -560,10 +589,10 @@ export default function AppHeader({
                 </div>
                 <div className="text-left">
                   <p className={`${config.ui.typography.sizes.md} ${config.ui.typography.weights.semibold} text-red-300`}>
-                    Sign Out
+                    {isLoggingOut ? "Signing Out..." : "Sign Out"}
                   </p>
                   <p className={`${config.ui.typography.sizes.xs} text-red-400`}>
-                    End your session
+                    {isLoggingOut ? "Please wait..." : "End your session"}
                   </p>
                 </div>
               </div>

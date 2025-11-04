@@ -54,8 +54,8 @@ export default function MobileScanPage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  const [isMobileAuthenticated, setIsMobileAuthenticated] = useState(false)
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true)
+  // Authentication is now handled by AuthGuard layout
+  // No need for local authentication state
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting")
   const [processedStudent, setProcessedStudent] = useState<StudentDataForSocket | null>(null)
@@ -71,39 +71,12 @@ export default function MobileScanPage() {
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
 
-  useEffect(() => {
-    // Check mobile authentication status on mount
-    const mobileAuthStatus = localStorage.getItem("isMobileAuthenticated")
-    setIsMobileAuthenticated(mobileAuthStatus === "true")
-    setIsLoadingAuth(false)
-  }, [])
-
-  const handleMobileLoginSuccess = () => {
-    setIsMobileAuthenticated(true)
-  }
-
-  const handleMobileLogout = () => {
-    localStorage.removeItem("isMobileAuthenticated")
-    setIsMobileAuthenticated(false)
-    toast({ title: "Logged Out", description: "You have been logged out from mobile scanner." })
-    // Optionally, close WebSocket connection if open
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.close()
-    }
-    setConnectionStatus("disconnected") // Reflect logout in connection status
-  }
-
   const log = useCallback((type: string, message: string, data?: any) => {
     console.log(`[MobileScan ${new Date().toISOString()}] [${type.toUpperCase()}] ${message}`, data || "")
   }, [])
 
   const connectWebSocket = useCallback(() => {
-    // Only connect if authenticated
-    if (!isMobileAuthenticated) {
-      log("info", "WebSocket connection deferred: Mobile not authenticated.")
-      setConnectionStatus("disconnected") // Show as disconnected if not auth'd
-      return
-    }
+    // Authentication is checked by AuthGuard, so we can connect directly
 
     const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || "ws://localhost:8080"
     log("info", `Attempting to connect to WebSocket: ${wsUrl}`)
@@ -163,20 +136,16 @@ export default function MobileScanPage() {
         })
         if (event.wasClean) setConnectionStatus("disconnected")
         else {
-          // Only attempt reconnect if still authenticated
-          if (isMobileAuthenticated) {
-            setConnectionStatus("reconnecting")
-            if (reconnectAttempts.current < maxReconnectAttempts) {
-              reconnectAttempts.current++
-              const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000)
-              log("info", `Attempting reconnection ${reconnectAttempts.current}/${maxReconnectAttempts} in ${delay}ms`)
-              reconnectTimeoutRef.current = setTimeout(connectWebSocket, delay)
-            } else {
-              log("error", "Max reconnection attempts reached")
-              setConnectionStatus("error")
-            }
+          // Attempt reconnection
+          setConnectionStatus("reconnecting")
+          if (reconnectAttempts.current < maxReconnectAttempts) {
+            reconnectAttempts.current++
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000)
+            log("info", `Attempting reconnection ${reconnectAttempts.current}/${maxReconnectAttempts} in ${delay}ms`)
+            reconnectTimeoutRef.current = setTimeout(connectWebSocket, delay)
           } else {
-            setConnectionStatus("disconnected") // Stay disconnected if logged out
+            log("error", "Max reconnection attempts reached")
+            setConnectionStatus("error")
           }
         }
       }
@@ -188,7 +157,7 @@ export default function MobileScanPage() {
       log("error", "Failed to create WebSocket connection", error)
       setConnectionStatus("error")
     }
-  }, [log, toast, isMobileAuthenticated])
+  }, [log, toast])
 
   const sendStudentDataToDesktop = useCallback(
     (studentData: StudentDataForSocket) => {
@@ -368,31 +337,7 @@ export default function MobileScanPage() {
     setViewMode("scanner")
   }
 
-  useEffect(() => {
-    if (isMobileAuthenticated) {
-      log("info", "Mobile scan page initialized and authenticated")
-      connectWebSocket()
-    } else if (!isLoadingAuth) {
-      log("info", "Mobile scan page initialized, user not authenticated.")
-      // Ensure WebSocket is closed if user becomes unauthenticated while on page
-      if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-        wsRef.current.close()
-      }
-      setConnectionStatus("disconnected")
-    }
-    return () => {
-      if (isMobileAuthenticated) {
-        log("info", "Mobile scan page effect cleanup (possibly unmounting or re-authenticating)")
-      }
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
-      if (wsRef.current) {
-        // Check readyState before closing to avoid errors if already closed
-        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
-          wsRef.current.close()
-        }
-      }
-    }
-  }, [log, connectWebSocket, isMobileAuthenticated, isLoadingAuth])
+  // Already handled by earlier useEffect - removing duplicate
 
   // Search with single character and faster response
   useEffect(() => {
@@ -409,13 +354,7 @@ export default function MobileScanPage() {
   }, [searchQuery, handleSearchStudents])
 
   const getStatusDisplay = () => {
-    if (!isMobileAuthenticated && !isLoadingAuth) {
-      return {
-        icon: <AlertTriangle className="w-4 h-4 text-orange-500" />,
-        text: "Login Required",
-        color: "text-orange-500",
-      }
-    }
+    // Authentication is handled by AuthGuard, so just show connection status
     switch (connectionStatus) {
       case "connecting":
         return {
@@ -449,20 +388,8 @@ export default function MobileScanPage() {
   }
   const statusDisplay = getStatusDisplay()
 
-  if (isLoadingAuth) {
-    return (
-      <div className={`min-h-screen ${theme.background} flex flex-col items-center justify-center`}>
-        <Loader2 className={`w-12 h-12 animate-spin ${theme.primary.text} mb-4`} />
-        <p className={`${theme.primary.text} text-lg`}>Loading Scanner...</p>
-      </div>
-    )
-  }
-
-  if (!isMobileAuthenticated) {
-    return <MobileLogin onLoginSuccess={handleMobileLoginSuccess} />
-  }
-
-  // If authenticated, render the scanner UI
+  // Authentication is handled by AuthGuard layout
+  // Render the scanner UI directly
   return (
     <div className={`min-h-screen ${theme.background} relative overflow-hidden flex flex-col`}>
       {/* Add the animated background */}
@@ -508,15 +435,7 @@ export default function MobileScanPage() {
                 </Button>
               </Link>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleMobileLogout}
-                className="text-red-400 hover:bg-red-500/20 rounded-full"
-                title="Logout Mobile Scanner"
-              >
-                <LogOut className="w-5 h-5" />
-              </Button>
+              {/* Logout handled by AppHeader in admin page, removed from mobile scanner */}
             </div>
           </div>
         </div>

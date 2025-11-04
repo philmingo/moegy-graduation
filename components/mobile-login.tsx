@@ -10,15 +10,14 @@ import { useToast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import config, { currentTheme, ui } from "@/lib/theme-config"
 import { AnimatedBackground } from "@/components/animated-background"
-
-// In a real app, this should be more secure and configurable
-const MOBILE_ACCESS_PASSWORD = "scan123" // Example password
+import { signInMobileScanner } from "@/lib/actions/auth"
 
 interface MobileLoginProps {
   onLoginSuccess: () => void
 }
 
 export default function MobileLogin({ onLoginSuccess }: MobileLoginProps) {
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -28,25 +27,35 @@ export default function MobileLogin({ onLoginSuccess }: MobileLoginProps) {
     e.preventDefault()
     setIsLoading(true)
 
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    try {
+      const result = await signInMobileScanner(email, password)
 
-    if (password === MOBILE_ACCESS_PASSWORD) {
-      localStorage.setItem("isMobileAuthenticated", "true")
+      if (result.success) {
+        toast({
+          title: "Access Granted",
+          description: "Welcome to Mobile Scanner!",
+          className: "bg-green-500 text-white",
+        })
+        onLoginSuccess()
+      } else {
+        toast({
+          title: "Access Denied",
+          description: result.error || "Incorrect password. Please try again.",
+          variant: "destructive",
+        })
+        setPassword("")
+      }
+    } catch (error) {
+      console.error("Mobile login error:", error)
       toast({
-        title: "Access Granted",
-        description: "Welcome to Mobile Scanner!",
-        className: "bg-green-500 text-white",
-      })
-      onLoginSuccess()
-    } else {
-      toast({
-        title: "Access Denied",
-        description: "Incorrect password. Please try again.",
+        title: "Login Error",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       })
       setPassword("")
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   return (
@@ -86,13 +95,42 @@ export default function MobileLogin({ onLoginSuccess }: MobileLoginProps) {
 
           {/* Login Form */}
           <form onSubmit={handleLogin} className="space-y-6">
+            {/* Email Field */}
+            <div className="space-y-2">
+              <Label
+                htmlFor="email"
+                className={`${ui.typography.sizes.sm} ${ui.typography.weights.medium} ${currentTheme.text.primary}`}
+              >
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your.email@example.com"
+                required
+                className={`
+                  ${currentTheme.glass.input} 
+                  ${currentTheme.text.primary} 
+                  ${ui.borderRadius.small}
+                  border-white/20 
+                  placeholder:text-white/70
+                  ${currentTheme.primary.ring}
+                  transition-all duration-300
+                  hover:${currentTheme.glass.hover}
+                  focus:border-purple-400/50
+                `}
+              />
+            </div>
+
             {/* Password Field */}
             <div className="space-y-2">
               <Label
                 htmlFor="password"
                 className={`${ui.typography.sizes.sm} ${ui.typography.weights.medium} ${currentTheme.text.primary}`}
               >
-                Access Password
+                Password
               </Label>
               <div className="relative">
                 <Input

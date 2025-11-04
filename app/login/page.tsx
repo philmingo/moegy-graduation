@@ -12,62 +12,131 @@ import { Toaster } from "@/components/ui/toaster"
 import config, { currentTheme, ui } from "@/lib/theme-config"
 import { AnimatedBackground } from "@/components/animated-background"
 import Link from "next/link"
-
-// Mock admin credentials - in a real app, this would be in a database
-const ADMIN_EMAIL = "admin@example.com"
-const ADMIN_PASSWORD = "password123"
+import { createClient } from "@/lib/supabase"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [emailError, setEmailError] = useState("")
+  const [passwordError, setPasswordError] = useState("")
+  const [generalError, setGeneralError] = useState("")
   const router = useRouter()
   const { toast } = useToast()
 
   // Check if already logged in
   useEffect(() => {
-    const isAuthenticated = localStorage.getItem("isAuthenticated") === "true"
-    if (isAuthenticated) {
-      router.push("/admin")
+    const checkAuth = async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        console.log("✅ [LOGIN] Already logged in, redirecting to /admin")
+        router.replace("/admin")
+      } else {
+        setIsCheckingAuth(false)
+      }
     }
+    checkAuth()
   }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    
+    // Clear previous errors
+    setEmailError("")
+    setPasswordError("")
+    setGeneralError("")
 
     try {
-      // In a real app, this would be an API call to authenticate
-      if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-        // Simulate API delay
-        await new Promise((resolve) => setTimeout(resolve, 1000))
+      console.log("🔐 [LOGIN] Attempting login for:", email)
+      
+      const supabase = createClient()
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-        // Store auth state in localStorage
-        localStorage.setItem("isAuthenticated", "true")
+      console.log("🔐 [LOGIN] Sign in result:", { user: data.user?.email, error })
 
-        toast({
-          title: "Login successful",
-          description: "Welcome back, admin!",
-        })
-
-        router.push("/admin")
-      } else {
+      if (error || !data.user) {
+        console.error("❌ [LOGIN] Login failed:", error?.message)
+        
+        // Parse error and set appropriate field error
+        const errorMessage = error?.message || "Invalid email or password"
+        const lowerError = errorMessage.toLowerCase()
+        
+        // Check for email-specific errors
+        if (lowerError.includes("email") || lowerError.includes("user not found") || lowerError.includes("no user")) {
+          setEmailError("No account found with this email address.")
+        } 
+        // Check for invalid credentials (could be email or password)
+        else if (lowerError.includes("invalid login credentials") || lowerError.includes("invalid credentials")) {
+          // This error is ambiguous - could be either wrong email or password
+          // Set it as password error since that's more common
+          setEmailError("Email or password is incorrect.")
+          setPasswordError("Email or password is incorrect.")
+        }
+        // Check for password-specific errors
+        else if (lowerError.includes("password")) {
+          setPasswordError("Incorrect password. Please try again.")
+        } 
+        // Generic invalid errors
+        else if (lowerError.includes("invalid")) {
+          setPasswordError("Incorrect password. Please try again.")
+        } 
+        // Network or other errors
+        else {
+          setGeneralError(errorMessage)
+        }
+        
         toast({
           title: "Login failed",
-          description: "Invalid email or password. Try admin@example.com / password123",
+          description: errorMessage,
           variant: "destructive",
         })
+      } else {
+        console.log("✅ [LOGIN] Login successful, session created")
+        console.log("✅ [LOGIN] User:", data.user.email)
+        console.log("✅ [LOGIN] Session:", data.session?.access_token ? "Valid token" : "No token")
+        
+        toast({
+          title: "Login successful",
+          description: `Welcome back, ${data.user.email}!`,
+        })
+
+        // Small delay to ensure session is fully set before navigation
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        console.log("✅ [LOGIN] Redirecting to /admin")
+        // Use replace to avoid back button issues
+        router.replace("/admin")
       }
     } catch (error) {
+      console.error("❌ [LOGIN] Unexpected error:", error)
       toast({
         title: "Login error",
-        description: "An error occurred during login.",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       })
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // Show loading state while checking authentication
+  if (isCheckingAuth) {
+    return (
+      <div className={`min-h-screen ${currentTheme.background} flex items-center justify-center`}>
+        <div className="text-center">
+          <GraduationCap className="h-16 w-16 text-purple-400 animate-pulse mb-4 mx-auto" />
+          <p className="text-white">Checking authentication...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -146,21 +215,28 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  setEmailError("") // Clear error on change
+                }}
                 placeholder="admin@example.com"
                 required
                 className={`
                   ${currentTheme.glass.input} 
                   ${currentTheme.text.primary} 
                   ${ui.borderRadius.small}
-                  border-white/20 
+                  ${emailError ? "border-red-500/50 focus:border-red-500" : "border-white/20 focus:border-purple-400/50"}
                   placeholder:text-white/70
                   ${currentTheme.primary.ring}
                   transition-all duration-300
                   hover:${currentTheme.glass.hover}
-                  focus:border-purple-400/50
                 `}
               />
+              {emailError && (
+                <p className="text-red-400 text-xs mt-1 flex items-center gap-1">
+                  <span className="text-red-400">⚠</span> {emailError}
+                </p>
+              )}
             </div>
 
             {/* Password Field */}
@@ -185,19 +261,21 @@ export default function LoginPage() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    setPasswordError("") // Clear error on change
+                  }}
                   placeholder="••••••••"
                   required
                   className={`
                     ${currentTheme.glass.input} 
                     ${currentTheme.text.primary} 
                     ${ui.borderRadius.small}
-                    border-white/20 
+                    ${passwordError ? "border-red-500/50 focus:border-red-500" : "border-white/20 focus:border-purple-400/50"}
                     placeholder:text-white/70
                     ${currentTheme.primary.ring}
                     transition-all duration-300
                     hover:${currentTheme.glass.hover}
-                    focus:border-purple-400/50
                     pr-12
                   `}
                 />
@@ -209,7 +287,22 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {passwordError && (
+                <p className="text-red-400 text-xs mt-1 flex items-center gap-1">
+                  <span className="text-red-400">⚠</span> {passwordError}
+                </p>
+              )}
             </div>
+
+            {/* General Error Message */}
+            {generalError && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                <p className="text-red-400 text-sm flex items-center gap-2">
+                  <span className="text-red-400 text-lg">⚠</span>
+                  {generalError}
+                </p>
+              </div>
+            )}
 
             {/* Login Button */}
             <Button
