@@ -20,8 +20,7 @@ interface GuestBookMessageCreatorProps {
   onMessageCreated: () => void
 }
 
-type Step = "scan" | "draw" | "review"
-type SelectionMode = "qr" | "search"
+type Step = "select" | "scan" | "search" | "draw"
 
 export function GuestBookMessageCreator({
   open,
@@ -29,12 +28,11 @@ export function GuestBookMessageCreator({
   students,
   onMessageCreated,
 }: GuestBookMessageCreatorProps) {
-  const [step, setStep] = useState<Step>("scan")
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>("qr")
+  const [step, setStep] = useState<Step>("select")
   const [scannedStudent, setScannedStudent] = useState<Student | null>(null)
   const [imageData, setImageData] = useState<string>("")
   const [isSaving, setIsSaving] = useState(false)
-  const [isScannerActive, setIsScannerActive] = useState(true)
+  const [isScannerActive, setIsScannerActive] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const theme = currentTheme
 
@@ -159,8 +157,7 @@ export function GuestBookMessageCreator({
     setIsScannerActive(false)
     
     // Reset all state
-    setStep("scan")
-    setSelectionMode("qr")
+    setStep("select")
     setScannedStudent(null)
     setImageData("")
     setSearchQuery("")
@@ -172,9 +169,8 @@ export function GuestBookMessageCreator({
   // Reset scanner state when dialog reopens
   useEffect(() => {
     if (open) {
-      setIsScannerActive(true)
-      setStep("scan")
-      setSelectionMode("qr")
+      setStep("select")
+      setIsScannerActive(false)
     }
   }, [open])
 
@@ -190,170 +186,204 @@ export function GuestBookMessageCreator({
     }
   }
 
+  // Dynamic modal sizing based on step
+  const getModalSize = () => {
+    switch (step) {
+      case "select":
+        return "max-w-md"
+      case "scan":
+        return "max-w-2xl"
+      case "search":
+        return "max-w-xl"
+      case "draw":
+        return "max-w-6xl"
+      default:
+        return "max-w-lg"
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
         className={`
           ${theme.modal.background} 
           ${theme.modal.border}
-          max-w-6xl max-h-[90vh] overflow-y-auto
+          ${getModalSize()} max-h-[90vh] overflow-y-auto
         `}
       >
         <DialogHeader>
           <DialogTitle className={`text-2xl font-bold ${theme.text.primary}`}>
-            {step === "scan" && "Select Student"}
+            {step === "select" && "Create Message"}
+            {step === "scan" && "Scan QR Code"}
+            {step === "search" && "Search Student"}
             {step === "draw" && "Create Your Message"}
-            {step === "review" && "Review Message"}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Step 1: Student Selection */}
-          {step === "scan" && (
+          {/* Step 1: Selection Mode */}
+          {step === "select" && (
             <div className="space-y-4">
-              {/* Selection Mode Toggle */}
-              <div className="flex gap-2">
+              <p className={`${theme.text.secondary} text-center`}>
+                Choose how you'd like to select the student
+              </p>
+              
+              <div className="flex flex-col gap-3">
                 <Button
                   type="button"
-                  variant={selectionMode === "qr" ? "default" : "outline"}
                   onClick={() => {
-                    setSelectionMode("qr")
-                    setSearchQuery("")
+                    setStep("scan")
                     setIsScannerActive(true)
                   }}
-                  className={`flex-1 ${
-                    selectionMode === "qr"
-                      ? `${theme.primary.gradient} text-white`
-                      : `${theme.glass.standard} ${theme.text.primary}`
-                  }`}
+                  className={`${theme.primary.gradient} text-white h-20 text-lg`}
                 >
-                  <QrCode className="h-4 w-4 mr-2" />
+                  <QrCode className="h-6 w-6 mr-3" />
                   Scan QR Code
                 </Button>
+                
                 <Button
                   type="button"
-                  variant={selectionMode === "search" ? "default" : "outline"}
-                  onClick={() => {
-                    setSelectionMode("search")
-                    setIsScannerActive(false)
-                  }}
-                  className={`flex-1 ${
-                    selectionMode === "search"
-                      ? `${theme.primary.gradient} text-white`
-                      : `${theme.glass.standard} ${theme.text.primary}`
-                  }`}
+                  variant="outline"
+                  onClick={() => setStep("search")}
+                  className={`${theme.glass.standard} ${theme.text.primary} h-20 text-lg border-0`}
                 >
-                  <UserSearch className="h-4 w-4 mr-2" />
-                  Search Student
+                  <UserSearch className="h-6 w-6 mr-3" />
+                  Search for Student
                 </Button>
               </div>
-
-              {/* QR Scanner Mode */}
-              {selectionMode === "qr" && (
-                <div className="space-y-4">
-                  <p className={theme.text.secondary}>
-                    Scan the student's QR code to identify them
-                  </p>
-                  <div className="w-full h-[500px] rounded-xl overflow-hidden">
-                    <QrScanner
-                      onScan={handleScan}
-                      onError={handleScanError}
-                      students={students}
-                      isActive={isScannerActive}
-                      onCameraStopped={handleCameraStopped}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Search Mode */}
-              {selectionMode === "search" && (
-                <div className="space-y-4">
-                  <p className={theme.text.secondary}>
-                    Search for a student by name
-                  </p>
-                  
-                  {/* Search Input */}
-                  <div className="relative">
-                    <Search
-                      className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${theme.text.primary} z-10`}
-                    />
-                    <Input
-                      type="text"
-                      placeholder="Search by student name..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className={`pl-12 pr-12 py-3 w-full text-base rounded-xl border-0 bg-white/10 backdrop-blur-sm ${theme.text.primary} placeholder:text-white/60 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-0 transition-all`}
-                      autoFocus
-                    />
-                    {searchQuery && (
-                      <button
-                        onClick={() => setSearchQuery("")}
-                        className={`absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded ${theme.text.muted} hover:${theme.text.primary} transition-colors z-10`}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Search Results */}
-                  <div className="max-h-[400px] overflow-y-auto">
-                    {searchQuery && filteredStudents.length > 0 ? (
-                      <div className="space-y-2">
-                        {filteredStudents.map((student) => (
-                          <div
-                            key={student.id}
-                            onClick={() => handleSelectStudent(student)}
-                            className={`p-4 ${theme.glass.light} rounded-lg hover:bg-white/20 cursor-pointer transition-all group`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div
-                                className={`w-10 h-10 ${theme.primary.gradient} rounded-lg flex items-center justify-center text-white font-bold`}
-                              >
-                                {student.first_name.charAt(0)}
-                                {student.last_name.charAt(0)}
-                              </div>
-                              <div className="flex-1">
-                                <h3
-                                  className={`font-semibold ${theme.text.primary} group-hover:text-purple-200 transition-colors`}
-                                >
-                                  {student.first_name} {student.last_name}
-                                </h3>
-                                {student.phonetic_spelling && (
-                                  <p className={`text-sm ${theme.text.secondary}`}>
-                                    Pronunciation: {student.phonetic_spelling}
-                                  </p>
-                                )}
-                                {student.university && (
-                                  <p className={`text-sm ${theme.text.secondary}`}>
-                                    {student.university}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : searchQuery ? (
-                      <div className="text-center py-8">
-                        <p className={`${theme.text.secondary}`}>
-                          No students found matching "{searchQuery}"
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <p className={`${theme.text.secondary}`}>
-                          Start typing to search for students
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
-          {/* Step 2: Drawing Canvas */}
+          {/* Step 2a: QR Scanner */}
+          {step === "scan" && (
+            <div className="space-y-4">
+              <p className={theme.text.secondary}>
+                Scan the student's QR code to identify them
+              </p>
+              <div className="w-full h-[500px] rounded-xl overflow-hidden">
+                <QrScanner
+                  onScan={handleScan}
+                  onError={handleScanError}
+                  students={students}
+                  isActive={isScannerActive}
+                  onCameraStopped={handleCameraStopped}
+                />
+              </div>
+              <div className="flex justify-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsScannerActive(false)
+                    setStep("select")
+                  }}
+                  className={`${theme.glass.standard} ${theme.text.primary}`}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2b: Search */}
+          {step === "search" && (
+            <div className="space-y-4">
+              <p className={theme.text.secondary}>
+                Search for a student by name
+              </p>
+              
+              {/* Search Input */}
+              <div className="relative">
+                <Search
+                  className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${theme.text.primary} z-10`}
+                />
+                <Input
+                  type="text"
+                  placeholder="Search by student name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={`pl-12 pr-12 py-3 w-full text-base rounded-xl border-0 bg-white/10 backdrop-blur-sm ${theme.text.primary} placeholder:text-white/60 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-0 transition-all`}
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className={`absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded ${theme.text.muted} hover:${theme.text.primary} transition-colors z-10`}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Search Results */}
+              <div className="max-h-[400px] overflow-y-auto">
+                {searchQuery && filteredStudents.length > 0 ? (
+                  <div className="space-y-2">
+                    {filteredStudents.map((student) => (
+                      <div
+                        key={student.id}
+                        onClick={() => handleSelectStudent(student)}
+                        className={`p-4 ${theme.glass.light} rounded-lg hover:bg-white/20 cursor-pointer transition-all group`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-10 h-10 ${theme.primary.gradient} rounded-lg flex items-center justify-center text-white font-bold`}
+                          >
+                            {student.first_name.charAt(0)}
+                            {student.last_name.charAt(0)}
+                          </div>
+                          <div className="flex-1">
+                            <h3
+                              className={`font-semibold ${theme.text.primary} group-hover:text-purple-200 transition-colors`}
+                            >
+                              {student.first_name} {student.last_name}
+                            </h3>
+                            {student.phonetic_spelling && (
+                              <p className={`text-sm ${theme.text.secondary}`}>
+                                Pronunciation: {student.phonetic_spelling}
+                              </p>
+                            )}
+                            {student.university && (
+                              <p className={`text-sm ${theme.text.secondary}`}>
+                                {student.university}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : searchQuery ? (
+                  <div className="text-center py-8">
+                    <p className={`${theme.text.secondary}`}>
+                      No students found matching "{searchQuery}"
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className={`${theme.text.secondary}`}>
+                      Start typing to search for students
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("select")}
+                  className={`${theme.glass.standard} ${theme.text.primary}`}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Drawing Canvas */}
           {step === "draw" && scannedStudent && (
             <div className="space-y-4">
               {/* Student Info */}

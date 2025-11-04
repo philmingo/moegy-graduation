@@ -1,7 +1,7 @@
 "use client"
 
 import { type GuestBookMessage } from "@/lib/actions/guest-book"
-import { currentTheme } from "@/lib/theme-config"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { MapPin } from "lucide-react"
 import Image from "next/image"
 
@@ -14,13 +14,11 @@ export function MessageCard({
   message, 
   className = ""
 }: MessageCardProps) {
-  const theme = currentTheme
-
   return (
-    <div className={`bg-white rounded-3xl shadow-2xl overflow-hidden max-w-7xl mx-auto ${className}`}>
+    <Card className={`bg-white rounded-3xl shadow-2xl overflow-hidden max-w-7xl mx-auto border-0 ${className}`}>
       <div className="grid grid-cols-10 min-h-[600px]">
         {/* Left Side - Photo/Gradient (30%) */}
-        <div className="col-span-3 bg-gradient-to-br from-violet-400 via-purple-400 to-pink-400 p-6 flex flex-col justify-center items-center">
+        <CardHeader className="col-span-3 bg-gradient-to-br from-violet-400 via-purple-400 to-pink-400 p-6 flex flex-col justify-center items-center">
           <div className="w-40 h-40 rounded-3xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl mb-6">
             <span className="text-6xl font-bold text-white">
               {message.student_name.split(' ').map(n => n[0]).join('')}
@@ -36,10 +34,10 @@ export function MessageCard({
               <span className="text-base">{message.student_location}</span>
             </div>
           </div>
-        </div>
+        </CardHeader>
 
         {/* Right Side - Message (70%) */}
-        <div className="col-span-7 p-10 pr-16 flex flex-col">
+        <CardContent className="col-span-7 p-10 pr-16 flex flex-col">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-1 h-8 bg-gradient-to-b from-violet-600 to-purple-600 rounded-full"></div>
             <h3 className="text-xl font-medium text-gray-700">Their Message</h3>
@@ -63,8 +61,8 @@ export function MessageCard({
               {new Date(message.created_at).toLocaleDateString()}
             </span>
           </div>
-        </div>
+        </CardContent>
       </div>
-    </div>
+    </Card>
   )
 }

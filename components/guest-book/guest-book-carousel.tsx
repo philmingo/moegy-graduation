@@ -88,9 +88,12 @@ export function GuestBookCarousel({
     )
   }
 
+  // Scale entire carousel proportionally for fullscreen
+  const scaleClass = isFullscreen ? "scale-150" : "scale-100"
+
   return (
     <div 
-      className="w-full flex flex-col items-center justify-center px-20 py-8 space-y-4"
+      className={`w-full flex flex-col items-center justify-center px-20 py-8 space-y-4 transition-transform duration-300 origin-center ${scaleClass}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
