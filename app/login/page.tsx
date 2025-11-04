@@ -63,11 +63,23 @@ export default function LoginPage() {
       console.log("🔐 [LOGIN] Sign in result:", { user: data.user?.email, error })
 
       if (error || !data.user) {
-        console.error("❌ [LOGIN] Login failed:", error?.message)
-        
         // Parse error and set appropriate field error
         const errorMessage = error?.message || "Invalid email or password"
         const lowerError = errorMessage.toLowerCase()
+        
+        // Determine if this is a user error (invalid credentials) or system error
+        const isUserError = lowerError.includes("invalid") || 
+                           lowerError.includes("credentials") || 
+                           lowerError.includes("password") ||
+                           lowerError.includes("user not found") ||
+                           lowerError.includes("no user")
+        
+        // Log as warning for expected user errors, error for system issues
+        if (isUserError) {
+          console.warn("⚠️ [LOGIN] Invalid credentials provided")
+        } else {
+          console.error("❌ [LOGIN] Login failed:", error?.message)
+        }
         
         // Check for email-specific errors
         if (lowerError.includes("email") || lowerError.includes("user not found") || lowerError.includes("no user")) {

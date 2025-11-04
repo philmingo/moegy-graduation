@@ -15,7 +15,7 @@ interface HandwritingCanvasProps {
 export function HandwritingCanvas({ 
   onImageChange, 
   className = "", 
-  width = 800, 
+  width = 1200, 
   height = 600 
 }: HandwritingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)

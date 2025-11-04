@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { GraduationCap, Home, ScanLine, Smartphone, LogOut, QrCode, RefreshCw, BookHeart } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import config from "@/lib/theme-config"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { createClient } from "@/lib/supabase"
@@ -29,7 +29,7 @@ interface ConnectedMobileDevice {
 }
 
 interface AppHeaderProps {
-  pageType?: "admin" | "scanner"
+  pageType?: "admin" | "scanner" | "guest-book"
   // Scanner-specific props
   autoAnnounce?: boolean
   onAutoAnnounceToggle?: () => void
@@ -57,6 +57,54 @@ export default function AppHeader({
   const isMobile = useIsMobile()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [userName, setUserName] = useState<string | null>(null)
+  const [userInitials, setUserInitials] = useState("A")
+
+  // Fetch current user information
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (session?.user) {
+          // Check if user has a name in metadata
+          const fullName = session.user.user_metadata?.full_name || 
+                          session.user.user_metadata?.name
+          
+          if (fullName) {
+            setUserName(fullName)
+            // Generate initials from full name
+            const nameParts = fullName.trim().split(' ')
+            const initials = nameParts.length > 1 
+              ? nameParts[0].charAt(0).toUpperCase() + nameParts[nameParts.length - 1].charAt(0).toUpperCase()
+              : nameParts[0].charAt(0).toUpperCase()
+            setUserInitials(initials)
+          } else if (session.user.email) {
+            // Fallback to email if no name in metadata
+            const emailName = session.user.email.split('@')[0]
+            // Convert email name to readable format (e.g., john.doe -> John Doe)
+            const displayName = emailName
+              .split(/[._-]/)
+              .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+              .join(' ')
+            setUserName(displayName)
+            
+            // Generate initials from email name
+            const nameParts = displayName.split(' ')
+            const initials = nameParts.length > 1 
+              ? nameParts[0].charAt(0).toUpperCase() + nameParts[nameParts.length - 1].charAt(0).toUpperCase()
+              : nameParts[0].charAt(0).toUpperCase()
+            setUserInitials(initials)
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching user:", error)
+      }
+    }
+
+    fetchUser()
+  }, [])
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
@@ -199,6 +247,44 @@ export default function AppHeader({
                     Dashboard
                   </Button>
                 </Link>
+              ) : pageType === "guest-book" ? (
+                <>
+                  <Link href="/admin">
+                    <Button
+                      variant="dashboard"
+                      style={{
+                        backgroundColor: "#D4AF37",
+                        color: "#3A2E5D",
+                      }}
+                      className="!bg-[#D4AF37] !text-[#3A2E5D] hover:!bg-[#D4AF37] hover:!text-[#3A2E5D] hover:scale-105 hover:shadow-lg transition-all duration-200 ease-in-out"
+                    >
+                      <Home className="h-4 w-4 mr-2" />
+                      Dashboard
+                    </Button>
+                  </Link>
+
+                  <Link href="/student-qr-portal">
+                    <Button
+                      variant="outline"
+                      className={`${config.theme.glass.standard} ${config.theme.text.primary} ${config.theme.glass.hover} border-0`}
+                    >
+                      <Home className="h-4 w-4 lg:mr-2" />
+                      <span className="hidden lg:inline">Graduate Portal</span>
+                      <span className="lg:hidden">Portal</span>
+                    </Button>
+                  </Link>
+
+                  <Link href="/scanner">
+                    <Button
+                      variant="outline"
+                      className={`${config.theme.glass.standard} ${config.theme.text.primary} ${config.theme.glass.hover} border-0`}
+                    >
+                      <ScanLine className="h-4 w-4 lg:mr-2" />
+                      <span className="hidden lg:inline">Scanner</span>
+                      <span className="lg:hidden">Scan</span>
+                    </Button>
+                  </Link>
+                </>
               ) : (
                 <>
                   <Link href="/student-qr-portal">
@@ -241,13 +327,15 @@ export default function AppHeader({
 
               <div className="flex items-center gap-2 lg:gap-3 pl-3 lg:pl-4 border-l border-white/20 flex-shrink-0">
                 <div className="text-right hidden lg:block">
-                  <p className={`text-sm font-medium ${config.theme.text.primary}`}>Admin User</p>
+                  <p className={`text-sm font-medium ${config.theme.text.primary} truncate max-w-[150px]`}>
+                    {userName || "Admin User"}
+                  </p>
                   <p className={`text-xs ${config.theme.text.secondary}`}>Administrator</p>
                 </div>
                 <div
                   className={`w-8 h-8 lg:w-10 lg:h-10 ${config.theme.primary.gradient} ${config.ui.borderRadius.large} flex items-center justify-center text-white ${config.ui.typography.weights.bold}`}
                 >
-                  A
+                  {userInitials}
                 </div>
               </div>
 
@@ -421,6 +509,79 @@ export default function AppHeader({
                     </div>
                   </div>
                 </Link>
+              ) : pageType === "guest-book" ? (
+                // Guest Book Navigation
+                <>
+                  <Link href="/admin" onClick={() => setIsMobileMenuOpen(false)}>
+                    <div
+                      className={`${config.theme.glass.light} ${config.theme.glass.hover} border ${config.theme.primary.border} rounded-xl p-4 transition-all duration-200 group mb-2`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                          <Home className="h-5 w-5 text-purple-900" />
+                        </div>
+                        <div>
+                          <p
+                            className={`${config.ui.typography.sizes.md} ${config.ui.typography.weights.semibold} ${config.theme.text.primary}`}
+                          >
+                            Admin Dashboard
+                          </p>
+                          <p className={`${config.ui.typography.sizes.xs} ${config.theme.text.secondary}`}>
+                            Manage students & data
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+
+                  <Link href="/student-qr-portal" onClick={() => setIsMobileMenuOpen(false)}>
+                    <div
+                      className={`${config.theme.glass.light} ${config.theme.glass.hover} border ${config.theme.primary.border} rounded-xl p-4 transition-all duration-200 group mb-2`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-10 h-10 ${config.theme.primary.gradient} rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}
+                        >
+                          <Home className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <p
+                            className={`${config.ui.typography.sizes.md} ${config.ui.typography.weights.semibold} ${config.theme.text.primary}`}
+                          >
+                            Graduate Portal
+                          </p>
+                          <p className={`${config.ui.typography.sizes.xs} ${config.theme.text.secondary}`}>
+                            Student QR codes
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+
+                  <Link href="/scanner" onClick={() => setIsMobileMenuOpen(false)}>
+                    <div
+                      className={`${config.theme.glass.light} ${config.theme.glass.hover} border ${config.theme.primary.border} rounded-xl p-4 transition-all duration-200 group mb-2`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-10 h-10 ${config.theme.primary.gradient} rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}
+                        >
+                          <ScanLine className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <p
+                            className={`${config.ui.typography.sizes.md} ${config.ui.typography.weights.semibold} ${config.theme.text.primary}`}
+                          >
+                            Scanner
+                          </p>
+                          <p className={`${config.ui.typography.sizes.xs} ${config.theme.text.secondary}`}>
+                            QR code scanner
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </>
               ) : (
                 // Admin Navigation
                 <>
@@ -538,11 +699,11 @@ export default function AppHeader({
                 <div
                   className={`w-10 h-10 ${config.theme.primary.gradient} ${config.ui.borderRadius.large} flex items-center justify-center text-white ${config.ui.typography.weights.bold}`}
                 >
-                  A
+                  {userInitials}
                 </div>
-                <div>
-                  <p className={`${config.ui.typography.sizes.sm} ${config.ui.typography.weights.medium} ${config.theme.text.primary}`}>
-                    Admin User
+                <div className="flex-1 min-w-0">
+                  <p className={`${config.ui.typography.sizes.sm} ${config.ui.typography.weights.medium} ${config.theme.text.primary} truncate`}>
+                    {userName || "Admin User"}
                   </p>
                   <p className={`${config.ui.typography.sizes.xs} ${config.theme.text.secondary}`}>
                     Administrator

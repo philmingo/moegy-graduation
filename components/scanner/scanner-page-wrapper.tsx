@@ -236,25 +236,43 @@ export default function ScannerPageWrapper() {
     }
   }, []) // REMOVED router dependency to prevent loops
 
-  // Load voices
+  // Load voices - FIXED: More robust voice loading with retry mechanism and manual trigger
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null
     let isComponentMounted = true
+    let retryCount = 0
+    const MAX_RETRIES = 10 // Max 10 attempts over ~5 seconds
 
     const loadVoices = () => {
       if (!isComponentMounted) return
 
       const allVoices = window.speechSynthesis.getVoices()
-      if (allVoices.length === 0) {
-        // Use a safer timeout approach
+      
+      if (allVoices.length === 0 && retryCount < MAX_RETRIES) {
+        // Exponential backoff: 100ms, 200ms, 300ms, 500ms, 500ms...
+        const delay = Math.min(100 * (retryCount + 1), 500)
+        retryCount++
+        
+        console.log(`🔄 [VOICE-LOADING] Attempt ${retryCount}/${MAX_RETRIES} - Retrying voice loading in ${delay}ms`)
+        
         timeoutId = setTimeout(() => {
           if (isComponentMounted) {
             loadVoices()
           }
-        }, 100)
+        }, delay)
         return
       }
 
+      if (allVoices.length === 0) {
+        console.warn("⚠️ [VOICE-LOADING] No voices available after all retry attempts")
+        // Still set empty array to prevent undefined errors
+        setAvailableVoices([])
+        return
+      }
+
+      console.log(`✅ [VOICE-LOADING] Found ${allVoices.length} voices`)
+
+      // Filter for English voices (US/UK/GB)
       const englishVoices = allVoices.filter(
         (voice) =>
           voice.lang.startsWith("en-US") ||
@@ -264,6 +282,9 @@ export default function ScannerPageWrapper() {
       )
 
       const filteredVoices = englishVoices.length > 0 ? englishVoices : allVoices
+      
+      console.log(`✅ [VOICE-LOADING] Filtered to ${filteredVoices.length} English voices`)
+      
       if (isComponentMounted) {
         setAvailableVoices(filteredVoices)
 
@@ -273,8 +294,10 @@ export default function ScannerPageWrapper() {
 
         if (savedVoice && filteredVoices.find((v) => v.name === savedVoice)) {
           setSelectedVoice(savedVoice)
+          console.log(`✅ [VOICE-LOADING] Restored saved voice: ${savedVoice}`)
         } else if (filteredVoices.length > 0) {
           setSelectedVoice(filteredVoices[0].name)
+          console.log(`✅ [VOICE-LOADING] Selected default voice: ${filteredVoices[0].name}`)
         }
 
         if (savedRate) {
@@ -285,17 +308,22 @@ export default function ScannerPageWrapper() {
         }
         if (savedPitch) {
           const pitch = Number.parseFloat(savedPitch)
-          if (!isNaN(pitch) && pitch >= 0.1 && pitch <= 2.0) {
+          if (!isNaN(pitch) && pitch >= 0.1 && pitch >= 2.0) {
             setSpeechPitch(pitch)
           }
         }
       }
     }
 
+    // Initial load
+    console.log("🔄 [VOICE-LOADING] Starting voice initialization")
     loadVoices()
 
+    // Listen for voiceschanged event (browser-specific behavior)
     const handleVoicesChanged = () => {
       if (isComponentMounted) {
+        console.log("🔄 [VOICE-LOADING] voiceschanged event fired")
+        retryCount = 0 // Reset retry count on event
         loadVoices()
       }
     }
@@ -314,6 +342,42 @@ export default function ScannerPageWrapper() {
       }
     }
   }, [])
+
+  // Manual voice reload when settings dialog opens - FIXED: Force voice reload on user interaction
+  useEffect(() => {
+    if (settingsDialogOpen && availableVoices.length === 0) {
+      console.log("🔄 [VOICE-LOADING] Settings dialog opened - forcing voice reload")
+      
+      // Force a fresh voice load when settings dialog opens
+      const voices = window.speechSynthesis.getVoices()
+      
+      if (voices.length > 0) {
+        const englishVoices = voices.filter(
+          (voice) =>
+            voice.lang.startsWith("en-US") ||
+            voice.lang.startsWith("en-GB") ||
+            voice.lang.startsWith("en-UK") ||
+            voice.lang === "en",
+        )
+        
+        const filteredVoices = englishVoices.length > 0 ? englishVoices : voices
+        setAvailableVoices(filteredVoices)
+        
+        if (filteredVoices.length > 0 && !selectedVoice) {
+          setSelectedVoice(filteredVoices[0].name)
+        }
+        
+        console.log(`✅ [VOICE-LOADING] Loaded ${filteredVoices.length} voices on settings open`)
+      } else {
+        // If still no voices, show a toast to inform the user
+        console.warn("⚠️ [VOICE-LOADING] No voices available even after settings dialog opened")
+        toast({
+          title: "Voice Loading Issue",
+          description: "Voice options are loading. Please wait a moment and try again.",
+        })
+      }
+    }
+  }, [settingsDialogOpen, availableVoices.length, selectedVoice, toast])
 
   // QR scan handler
   const handleScan = useCallback(

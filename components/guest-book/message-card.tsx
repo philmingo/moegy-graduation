@@ -2,7 +2,7 @@
 
 import { type GuestBookMessage } from "@/lib/actions/guest-book"
 import { currentTheme } from "@/lib/theme-config"
-import { Calendar, MapPin } from "lucide-react"
+import { MapPin } from "lucide-react"
 import Image from "next/image"
 
 interface MessageCardProps {
@@ -10,49 +10,60 @@ interface MessageCardProps {
   className?: string
 }
 
-export function MessageCard({ message, className = "" }: MessageCardProps) {
+export function MessageCard({ 
+  message, 
+  className = ""
+}: MessageCardProps) {
   const theme = currentTheme
 
   return (
-    <div 
-      className={`
-        ${theme.glass.standard} 
-        rounded-2xl p-6 
-        ${theme.hover.card.transition}
-        flex flex-col gap-4
-        ${className}
-      `}
-    >
-      {/* Student Info Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <h3 className={`text-xl font-semibold ${theme.text.primary} mb-1`}>
-            {message.student_name}
-          </h3>
-          <div className="flex items-center gap-2">
-            <MapPin className={`h-4 w-4 ${theme.text.muted}`} />
-            <span className={`text-sm ${theme.text.secondary}`}>
-              {message.student_location}
+    <div className={`bg-white rounded-3xl shadow-2xl overflow-hidden max-w-7xl mx-auto ${className}`}>
+      <div className="grid grid-cols-10 min-h-[600px]">
+        {/* Left Side - Photo/Gradient (30%) */}
+        <div className="col-span-3 bg-gradient-to-br from-violet-400 via-purple-400 to-pink-400 p-6 flex flex-col justify-center items-center">
+          <div className="w-40 h-40 rounded-3xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl mb-6">
+            <span className="text-6xl font-bold text-white">
+              {message.student_name.split(' ').map(n => n[0]).join('')}
+            </span>
+          </div>
+          
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-3">
+              {message.student_name}
+            </h2>
+            <div className="inline-flex items-center gap-2 text-white/90 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full">
+              <MapPin size={18} />
+              <span className="text-base">{message.student_location}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side - Message (70%) */}
+        <div className="col-span-7 p-10 pr-16 flex flex-col">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-1 h-8 bg-gradient-to-b from-violet-600 to-purple-600 rounded-full"></div>
+            <h3 className="text-xl font-medium text-gray-700">Their Message</h3>
+          </div>
+
+          {/* Message Image - Fill container with safe padding */}
+          <div className="flex-1 border-2 border-gray-200 rounded-2xl bg-gray-50 p-2 overflow-hidden">
+            <div className="relative w-full h-full">
+              <Image
+                src={message.message_image_url}
+                alt={`Message from ${message.student_name}`}
+                fill
+                className="object-contain rounded-xl"
+                priority
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+            <span className="text-sm text-gray-500">
+              {new Date(message.created_at).toLocaleDateString()}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Calendar className={`h-4 w-4 ${theme.text.muted}`} />
-          <span className={`text-sm ${theme.text.muted}`}>
-            {new Date(message.created_at).toLocaleDateString()}
-          </span>
-        </div>
-      </div>
-
-      {/* Handwritten Message Image */}
-      <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-white">
-        <Image
-          src={message.message_image_url}
-          alt={`Message from ${message.student_name}`}
-          fill
-          className="object-contain"
-          priority
-        />
       </div>
     </div>
   )

@@ -90,37 +90,37 @@ export function GuestBookCarousel({
 
   return (
     <div 
-      className="relative w-full"
+      className="w-full flex flex-col items-center justify-center px-20 py-8 space-y-4"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <Carousel
-        opts={{
-          align: "center",
-          loop: true,
-        }}
-        setApi={setApi}
-        className="w-full"
-      >
-        <CarouselContent>
-          {messages.map((message) => (
-            <CarouselItem key={message.id}>
-              <div className="p-1">
+      <div className="relative w-full max-w-7xl">
+        <Carousel
+          opts={{
+            align: "center",
+            loop: true,
+          }}
+          setApi={setApi}
+          className="w-full"
+        >
+          <CarouselContent>
+            {messages.map((message) => (
+              <CarouselItem key={message.id}>
                 <MessageCard message={message} />
-              </div>
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        <CarouselPrevious className={theme.glass.standard} />
-        <CarouselNext className={theme.glass.standard} />
-      </Carousel>
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+          <CarouselPrevious className={`${theme.glass.standard} -left-12`} />
+          <CarouselNext className={`${theme.glass.standard} -right-12`} />
+        </Carousel>
+      </div>
 
-      {/* Carousel indicators and fullscreen button */}
-      <div className="flex justify-between items-center mt-4">
+      {/* Controls below the card */}
+      <div className="w-full max-w-7xl flex items-center justify-between px-4">
         <span className={`text-sm ${theme.text.muted}`}>
           {current} / {count}
         </span>
-        
+
         {onToggleFullscreen && (
           <Button
             onClick={onToggleFullscreen}

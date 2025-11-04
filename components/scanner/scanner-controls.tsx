@@ -434,9 +434,34 @@ export function ScannerControls({
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="voice-select" className={`${config.theme.text.primary}`}>
-                Voice
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="voice-select" className={`${config.theme.text.primary}`}>
+                  Voice
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    console.log("🔄 [VOICE-LOADING] Manual refresh triggered")
+                    // Force reload voices
+                    const voices = window.speechSynthesis.getVoices()
+                    if (voices.length > 0) {
+                      console.log(`✅ [VOICE-LOADING] Manual refresh found ${voices.length} voices`)
+                    } else {
+                      console.warn("⚠️ [VOICE-LOADING] Manual refresh found no voices")
+                    }
+                    // Trigger the voiceschanged event handler if it exists
+                    if (window.speechSynthesis.onvoiceschanged) {
+                      window.speechSynthesis.onvoiceschanged(new Event('voiceschanged'))
+                    }
+                  }}
+                  className={`h-7 px-2 ${config.theme.text.primary} hover:${config.theme.text.secondary}`}
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Refresh
+                </Button>
+              </div>
               <Select value={selectedVoice} onValueChange={onSelectedVoiceChange}>
                 <SelectTrigger
                   id="voice-select"
@@ -445,15 +470,23 @@ export function ScannerControls({
                   <SelectValue placeholder="Select a voice" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableVoices.map((voice) => (
-                    <SelectItem key={voice.name} value={voice.name}>
-                      {voice.name} ({voice.lang})
+                  {availableVoices.length > 0 ? (
+                    availableVoices.map((voice) => (
+                      <SelectItem key={voice.name} value={voice.name}>
+                        {voice.name} ({voice.lang})
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="loading" disabled>
+                      Loading voices...
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
               <p className={`${config.ui.typography.sizes.xs} ${config.theme.text.secondary}`}>
-                English (US/UK) voices. Google/Microsoft voices are often more natural.
+                {availableVoices.length > 0 
+                  ? `${availableVoices.length} voice${availableVoices.length !== 1 ? 's' : ''} available. Google/Microsoft voices are often more natural.`
+                  : "Loading voices... If voices don't appear, click Refresh."}
               </p>
             </div>
             <div className="space-y-2">

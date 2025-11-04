@@ -63,9 +63,9 @@ export default function GuestBookPage() {
   return (
     <div className={`min-h-screen ${theme.background}`}>
       {/* Header - Hidden in fullscreen */}
-      {!isFullscreen && <AppHeader />}
+      {!isFullscreen && <AppHeader pageType="guest-book" />}
 
-      <div className={`${isFullscreen ? 'h-screen flex items-center justify-center' : 'max-w-6xl mx-auto p-8'} space-y-6`}>
+      <div className={`${isFullscreen ? 'h-screen flex items-center justify-center' : 'max-w-[1600px] mx-auto p-8'} space-y-6`}>
         {/* Page Title & Actions */}
         {!isFullscreen && (
           <div className="flex items-center justify-between">
@@ -109,8 +109,8 @@ export default function GuestBookPage() {
         )}
 
         {/* Carousel */}
-        <div className={`relative ${isFullscreen ? 'w-full' : 'mt-6'}`}>
-          <div className={isFullscreen ? 'max-w-4xl mx-auto' : 'max-w-3xl mx-auto'}>
+        <div className={`relative ${isFullscreen ? 'w-full px-8' : 'mt-6'}`}>
+          <div className={isFullscreen ? 'max-w-7xl mx-auto' : 'w-full'}>
             <GuestBookCarousel 
               messages={messages} 
               autoPlayInterval={10000}
