@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   description: "Graduation Announcement App - QR Code Student Management and Ceremony Announcements",
   generator: "Next.js",
   icons: {
-    icon: "/Voceo Favicon.png",
-    apple: "/Voceo Favicon.png",
+    icon: "/favicon.ico",
+    apple: "/apple-icon.png",
   },
 }
 
