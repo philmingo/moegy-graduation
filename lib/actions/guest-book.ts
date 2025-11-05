@@ -22,6 +22,7 @@ export interface CreateMessageData {
   studentName: string
   studentLocation: string
   imageBlob: string // Base64 encoded image
+  studentPhotoBlob?: string // Base64 encoded student photo (optional)
 }
 
 /**
@@ -90,7 +91,46 @@ export async function createGuestBookMessage(messageData: CreateMessageData): Pr
   const supabase = createClient()
 
   try {
-    // Step 1: Upload image to storage
+    // Step 1: Upload student photo if provided
+    let studentPhotoUrl: string | null = null
+    if (messageData.studentPhotoBlob) {
+      const photoFileName = `${messageData.studentId}-photo-${Date.now()}.png`
+      const photoFilePath = `photos/${photoFileName}`
+
+      // Convert base64 to blob for student photo
+      const photoBase64Data = messageData.studentPhotoBlob.split(",")[1] || messageData.studentPhotoBlob
+      const photoByteCharacters = atob(photoBase64Data)
+      const photoByteNumbers = new Array(photoByteCharacters.length)
+      for (let i = 0; i < photoByteCharacters.length; i++) {
+        photoByteNumbers[i] = photoByteCharacters.charCodeAt(i)
+      }
+      const photoByteArray = new Uint8Array(photoByteNumbers)
+      const photoBlob = new Blob([photoByteArray], { type: "image/png" })
+
+      console.log("🔄 [SERVER] createGuestBookMessage - Uploading student photo to storage:", photoFilePath)
+
+      const { data: photoUploadData, error: photoUploadError } = await supabase.storage
+        .from("voceo-guest-book-messages")
+        .upload(photoFilePath, photoBlob, {
+          contentType: "image/png",
+          upsert: false,
+        })
+
+      if (photoUploadError) {
+        console.error("❌ [SERVER] createGuestBookMessage - Photo upload error:", photoUploadError)
+        // Don't throw error, just log it and continue without photo
+        console.warn("⚠️ [SERVER] createGuestBookMessage - Continuing without student photo")
+      } else {
+        console.log("✅ [SERVER] createGuestBookMessage - Student photo uploaded successfully:", photoUploadData.path)
+        const { data: photoPublicUrlData } = supabase.storage
+          .from("voceo-guest-book-messages")
+          .getPublicUrl(photoFilePath)
+        studentPhotoUrl = photoPublicUrlData.publicUrl
+        console.log("🔄 [SERVER] createGuestBookMessage - Student photo public URL:", studentPhotoUrl)
+      }
+    }
+
+    // Step 2: Upload message image to storage
     const fileName = `${messageData.studentId}-${Date.now()}.png`
     const filePath = `messages/${fileName}`
 
@@ -104,7 +144,7 @@ export async function createGuestBookMessage(messageData: CreateMessageData): Pr
     const byteArray = new Uint8Array(byteNumbers)
     const blob = new Blob([byteArray], { type: "image/png" })
 
-    console.log("🔄 [SERVER] createGuestBookMessage - Uploading image to storage:", filePath)
+    console.log("🔄 [SERVER] createGuestBookMessage - Uploading message image to storage:", filePath)
 
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("voceo-guest-book-messages")
@@ -115,17 +155,22 @@ export async function createGuestBookMessage(messageData: CreateMessageData): Pr
 
     if (uploadError) {
       console.error("❌ [SERVER] createGuestBookMessage - Upload error:", uploadError)
+      // Cleanup student photo if message upload fails
+      if (studentPhotoUrl) {
+        const photoPath = studentPhotoUrl.split("/").slice(-2).join("/")
+        await supabase.storage.from("voceo-guest-book-messages").remove([photoPath])
+      }
       throw new Error(`Failed to upload image: ${uploadError.message}`)
     }
 
-    console.log("✅ [SERVER] createGuestBookMessage - Image uploaded successfully:", uploadData.path)
+    console.log("✅ [SERVER] createGuestBookMessage - Message image uploaded successfully:", uploadData.path)
 
-    // Step 2: Get public URL for the uploaded image
+    // Step 3: Get public URL for the uploaded message image
     const { data: publicUrlData } = supabase.storage.from("voceo-guest-book-messages").getPublicUrl(filePath)
 
     const imageUrl = publicUrlData.publicUrl
 
-    console.log("🔄 [SERVER] createGuestBookMessage - Public URL:", imageUrl)
+    console.log("🔄 [SERVER] createGuestBookMessage - Message image public URL:", imageUrl)
 
     // Step 3: Fetch student data to include in the message
     const { data: studentData, error: studentError } = await supabase
@@ -146,7 +191,7 @@ export async function createGuestBookMessage(messageData: CreateMessageData): Pr
       student_name: messageData.studentName,
       student_location: messageData.studentLocation,
       message_image_url: imageUrl,
-      student_photo_url: null, // Students table doesn't have photo_url column
+      student_photo_url: studentPhotoUrl, // Use uploaded student photo URL or null
       student_university: studentData?.university || null,
       student_programme: studentData?.programme || null,
       student_classification: studentData?.classification || null,
@@ -164,8 +209,13 @@ export async function createGuestBookMessage(messageData: CreateMessageData): Pr
     if (error) {
       console.error("❌ [SERVER] createGuestBookMessage - Database error:", error)
       
-      // Cleanup: Delete uploaded image if database insert fails
-      await supabase.storage.from("voceo-guest-book-messages").remove([filePath])
+      // Cleanup: Delete uploaded images if database insert fails
+      const filesToRemove = [filePath]
+      if (studentPhotoUrl) {
+        const photoPath = studentPhotoUrl.split("/").slice(-2).join("/")
+        filesToRemove.push(photoPath)
+      }
+      await supabase.storage.from("voceo-guest-book-messages").remove(filesToRemove)
       
       throw new Error(`Failed to create message: ${error.message}`)
     }

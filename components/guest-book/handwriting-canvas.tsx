@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Eraser, Pen, Undo, Redo, Trash2 } from "lucide-react"
+import { Eraser, Pen, Undo, Redo, Trash2, Camera, X } from "lucide-react"
 import { currentTheme } from "@/lib/theme-config"
 
 interface HandwritingCanvasProps {
@@ -10,13 +10,21 @@ interface HandwritingCanvasProps {
   className?: string
   width?: number
   height?: number
+  onAttachPhoto?: () => void
+  studentPhotoData?: string
+  onRemovePhoto?: () => void
+  isSaving?: boolean
 }
 
 export function HandwritingCanvas({ 
   onImageChange, 
   className = "", 
   width = 1200, 
-  height = 600 
+  height = 600,
+  onAttachPhoto,
+  studentPhotoData,
+  onRemovePhoto,
+  isSaving = false
 }: HandwritingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const contextRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -504,6 +512,42 @@ export function HandwritingCanvas({
         >
           <Trash2 className="h-4 w-4" />
         </Button>
+
+        {/* Attach Photo Button - Far Right */}
+        {onAttachPhoto && (
+          <>
+            <div className="flex-1" />
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={onAttachPhoto}
+                disabled={isSaving}
+                className="text-white hover:bg-white/20"
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                {studentPhotoData ? "Change Photo" : "Attach Photo"}
+              </Button>
+              {studentPhotoData && (
+                <div className="relative w-10 h-10 rounded-lg overflow-hidden border-2 border-purple-400">
+                  <img
+                    src={studentPhotoData}
+                    alt="Student preview"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    onClick={onRemovePhoto}
+                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 transition-colors"
+                    disabled={isSaving}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Canvas */}

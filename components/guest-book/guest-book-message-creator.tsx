@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { QrScanner } from "@/components/qr-scanner"
 import { HandwritingCanvas } from "./handwriting-canvas"
+import { CameraPhotoModal } from "./camera-photo-modal"
 import { type Student } from "@/lib/actions/students"
 import { createGuestBookMessage } from "@/lib/actions/guest-book"
 import { currentTheme } from "@/lib/theme-config"
-import { Loader2, Check, X, Search, QrCode, UserSearch } from "lucide-react"
+import { Loader2, Check, X, Search, QrCode, UserSearch, Camera, Image as ImageIcon } from "lucide-react"
 import { toast } from "sonner"
 import { suppressCameraAbortWarnings } from "@/lib/utils/camera-cleanup"
 
@@ -31,6 +32,8 @@ export function GuestBookMessageCreator({
   const [step, setStep] = useState<Step>("select")
   const [scannedStudent, setScannedStudent] = useState<Student | null>(null)
   const [imageData, setImageData] = useState<string>("")
+  const [studentPhotoData, setStudentPhotoData] = useState<string>("")
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isScannerActive, setIsScannerActive] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -115,6 +118,12 @@ export function GuestBookMessageCreator({
     setImageData(data)
   }, [])
 
+  // Handle photo confirmed from camera modal
+  const handlePhotoConfirmed = useCallback((photoDataUrl: string) => {
+    setStudentPhotoData(photoDataUrl)
+    toast.success("Photo added successfully!")
+  }, [])
+
   // Handle save message
   const handleSave = async () => {
     if (!scannedStudent || !imageData) {
@@ -130,6 +139,7 @@ export function GuestBookMessageCreator({
         studentName: `${scannedStudent.first_name} ${scannedStudent.last_name}`,
         studentLocation: scannedStudent.university || "Unknown Location",
         imageBlob: imageData,
+        studentPhotoBlob: studentPhotoData || undefined,
       })
 
       toast.success("Message saved successfully!")
@@ -160,7 +170,9 @@ export function GuestBookMessageCreator({
     setStep("select")
     setScannedStudent(null)
     setImageData("")
+    setStudentPhotoData("")
     setSearchQuery("")
+    setIsCameraModalOpen(false)
     
     // Close dialog - camera cleanup will complete via onCameraStopped callback
     onOpenChange(false)
@@ -401,6 +413,10 @@ export function GuestBookMessageCreator({
                 onImageChange={handleImageChange}
                 width={1200}
                 height={600}
+                onAttachPhoto={() => setIsCameraModalOpen(true)}
+                studentPhotoData={studentPhotoData}
+                onRemovePhoto={() => setStudentPhotoData("")}
+                isSaving={isSaving}
               />
 
               {/* Action Buttons */}
@@ -437,6 +453,13 @@ export function GuestBookMessageCreator({
           )}
         </div>
       </DialogContent>
+
+      {/* Camera Photo Modal */}
+      <CameraPhotoModal
+        open={isCameraModalOpen}
+        onOpenChange={setIsCameraModalOpen}
+        onPhotoConfirmed={handlePhotoConfirmed}
+      />
     </Dialog>
   )
 }
