@@ -109,15 +109,20 @@ export function GuestBookCarousel({
 
   return (
     <div 
-      className={`w-full h-full flex flex-col items-center justify-center ${
+      className={`w-full h-full flex flex-col items-center ${
         isFullscreen 
-          ? 'px-4 sm:px-8 md:px-12 lg:px-16 xl:px-20 py-6 sm:py-8' 
-          : 'px-4 sm:px-8 md:px-12 lg:px-20 py-8'
+          ? 'justify-between px-4 sm:px-8 md:px-12 lg:px-16 xl:px-20 py-6 sm:py-8' 
+          : 'justify-center px-4 sm:px-8 md:px-12 lg:px-20 py-8'
       } transition-all duration-300`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`relative w-full ${isFullscreen ? 'max-w-[90vw] xl:max-w-7xl' : 'max-w-7xl'} flex-shrink transition-all duration-300`}>
+      <div className={`relative w-full max-w-7xl ${isFullscreen ? 'flex-1 flex items-center justify-center' : 'flex-shrink'}`}>
+        <div className={`w-full transition-all duration-300 ${
+          isFullscreen 
+            ? 'scale-[1.15] sm:scale-[1.2] md:scale-[1.25] lg:scale-[1.3] xl:scale-[1.35] origin-center' 
+            : 'scale-100'
+        }`}>
         <Carousel
           opts={{
             align: "center",
@@ -129,17 +134,18 @@ export function GuestBookCarousel({
           <CarouselContent className="items-center">
             {messages.map((message) => (
               <CarouselItem key={message.id} className="flex justify-center">
-                <MessageCard message={message} />
+                <MessageCard message={message} isFullscreen={isFullscreen} />
               </CarouselItem>
             ))}
           </CarouselContent>
           <CarouselPrevious className={`${theme.glass.standard} ${isFullscreen ? 'left-2' : 'left-2 sm:-left-12'}`} />
           <CarouselNext className={`${theme.glass.standard} ${isFullscreen ? 'right-2' : 'right-2 sm:-right-12'}`} />
         </Carousel>
+        </div>
       </div>
 
       {/* Controls below the card */}
-      <div className={`w-full ${isFullscreen ? 'max-w-[90vw] xl:max-w-7xl' : 'max-w-7xl'} flex items-center justify-between px-4 mt-4 sm:mt-6 transition-all duration-300`}>
+      <div className={`w-full max-w-7xl flex items-center justify-between ${isFullscreen ? 'mt-6 sm:mt-8' : 'mt-4 sm:mt-6'} transition-all duration-300`}>
         <span className={`${isFullscreen ? 'text-base sm:text-lg' : 'text-sm'} ${theme.text.muted}`}>
           {current} / {count}
         </span>

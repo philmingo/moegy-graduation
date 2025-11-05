@@ -180,10 +180,17 @@ export function CameraPhotoModal({
           flex flex-col
         `}
       >
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className={`text-xl sm:text-2xl font-bold ${theme.text.primary}`}>
+        <DialogHeader className="flex-shrink-0 relative">
+          <DialogTitle className={`text-xl sm:text-2xl font-bold ${theme.text.primary} pr-10`}>
             {capturedPhoto ? "Review Your Photo" : "Take Your Photo"}
           </DialogTitle>
+          <button
+            onClick={handleClose}
+            className={`absolute right-0 top-0 p-2 rounded-lg ${theme.glass.standard} ${theme.text.primary} hover:bg-white/20 transition-colors`}
+            disabled={isCapturing}
+          >
+            <X className="h-5 w-5" />
+          </button>
         </DialogHeader>
 
         <div className="flex-1 flex flex-col gap-3 sm:gap-4 min-h-0">
@@ -243,7 +250,7 @@ export function CameraPhotoModal({
               <>
                 {/* Camera Selection - Bottom Left */}
                 <div className="flex items-center gap-2 order-2 sm:order-1">
-                  {availableCameras.length > 1 && (
+                  {availableCameras.length > 0 && (
                     <select
                       value={selectedCamera}
                       onChange={(e) => {

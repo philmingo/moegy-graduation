@@ -223,13 +223,28 @@ export function GuestBookMessageCreator({
           ${getModalSize()} max-h-[90vh] overflow-y-auto
         `}
       >
-        <DialogHeader>
-          <DialogTitle className={`text-2xl font-bold ${theme.text.primary}`}>
+        <DialogHeader className="relative">
+          <DialogTitle className={`text-2xl font-bold ${theme.text.primary} pr-10`}>
             {step === "select" && "Create Message"}
             {step === "scan" && "Scan QR Code"}
             {step === "search" && "Search Student"}
             {step === "draw" && "Create Your Message"}
           </DialogTitle>
+          {step === "select" ? (
+            <button
+              onClick={handleClose}
+              className={`absolute right-0 top-0 p-2 rounded-lg ${theme.glass.standard} ${theme.text.primary} hover:bg-white/20 transition-colors`}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          ) : (step === "scan" || step === "search") && (
+            <button
+              onClick={() => setStep("select")}
+              className={`absolute right-0 top-0 p-2 rounded-lg ${theme.glass.standard} ${theme.text.primary} hover:bg-white/20 transition-colors`}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </DialogHeader>
 
         <div className="space-y-6">
