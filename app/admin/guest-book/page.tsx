@@ -69,9 +69,10 @@ export default function GuestBookPage() {
       {/* Header - Hidden in fullscreen */}
       {!isFullscreen && <AppHeader pageType="guest-book" />}
 
-      <div className={`${isFullscreen ? 'h-screen flex items-center justify-center' : 'max-w-[1600px] mx-auto p-8'} space-y-6 relative z-10`}>
-        {/* Page Title & Actions */}
-        {!isFullscreen && (
+      {/* Normal Mode Container */}
+      {!isFullscreen && (
+        <div className="max-w-[1600px] mx-auto p-4 sm:p-6 md:p-8 space-y-6 relative z-10">
+          {/* Page Title & Actions */}
           <div className="flex items-center justify-between">
             <div>
               <h1 className={`text-3xl font-bold ${theme.text.primary}`}>
@@ -90,10 +91,8 @@ export default function GuestBookPage() {
               Create Message
             </Button>
           </div>
-        )}
 
-        {/* Stats */}
-        {!isFullscreen && (
+          {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className={`${theme.glass.standard} rounded-xl p-6`}>
               <p className={theme.text.muted}>Total Messages</p>
@@ -110,28 +109,36 @@ export default function GuestBookPage() {
               </p>
             </div>
           </div>
-        )}
 
-        {/* Carousel */}
-        <div className={`relative ${isFullscreen ? 'w-full px-8' : 'mt-6'}`}>
-          <div className={isFullscreen ? 'max-w-7xl mx-auto' : 'w-full'}>
-            <GuestBookCarousel 
-              messages={messages} 
-              autoPlayInterval={10000}
-              isFullscreen={isFullscreen}
-              onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
-            />
-          </div>
+          {/* Carousel */}
+          <GuestBookCarousel 
+            messages={messages} 
+            autoPlayInterval={10000}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+          />
         </div>
+      )}
 
-        {/* Message Creator Modal */}
-        <GuestBookMessageCreator
-          open={isCreatorOpen}
-          onOpenChange={setIsCreatorOpen}
-          students={students}
-          onMessageCreated={handleMessageCreated}
-        />
-      </div>
+      {/* Fullscreen Mode */}
+      {isFullscreen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <GuestBookCarousel 
+            messages={messages} 
+            autoPlayInterval={10000}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+          />
+        </div>
+      )}
+
+      {/* Message Creator Modal */}
+      <GuestBookMessageCreator
+        open={isCreatorOpen}
+        onOpenChange={setIsCreatorOpen}
+        students={students}
+        onMessageCreated={handleMessageCreated}
+      />
     </div>
   )
 }

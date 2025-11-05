@@ -55,6 +55,25 @@ export function GuestBookCarousel({
     }
   }, [messages.length, api])
 
+  // Escape key handler for fullscreen
+  useEffect(() => {
+    if (!isFullscreen || !onToggleFullscreen) {
+      return
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onToggleFullscreen()
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape)
+
+    return () => {
+      window.removeEventListener("keydown", handleEscape)
+    }
+  }, [isFullscreen, onToggleFullscreen])
+
   // Auto-play functionality
   useEffect(() => {
     // In fullscreen mode, always autoplay regardless of hover
@@ -88,16 +107,17 @@ export function GuestBookCarousel({
     )
   }
 
-  // Scale entire carousel proportionally for fullscreen
-  const scaleClass = isFullscreen ? "scale-150" : "scale-100"
-
   return (
     <div 
-      className={`w-full flex flex-col items-center justify-center px-20 py-8 space-y-4 transition-transform duration-300 origin-center ${scaleClass}`}
+      className={`w-full h-full flex flex-col items-center justify-center ${
+        isFullscreen 
+          ? 'px-4 sm:px-8 md:px-12 lg:px-16 xl:px-20 py-6 sm:py-8' 
+          : 'px-4 sm:px-8 md:px-12 lg:px-20 py-8'
+      } transition-all duration-300`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="relative w-full max-w-7xl">
+      <div className={`relative w-full ${isFullscreen ? 'max-w-[90vw] xl:max-w-7xl' : 'max-w-7xl'} flex-shrink transition-all duration-300`}>
         <Carousel
           opts={{
             align: "center",
@@ -106,35 +126,35 @@ export function GuestBookCarousel({
           setApi={setApi}
           className="w-full"
         >
-          <CarouselContent>
+          <CarouselContent className="items-center">
             {messages.map((message) => (
-              <CarouselItem key={message.id}>
+              <CarouselItem key={message.id} className="flex justify-center">
                 <MessageCard message={message} />
               </CarouselItem>
             ))}
           </CarouselContent>
-          <CarouselPrevious className={`${theme.glass.standard} -left-12`} />
-          <CarouselNext className={`${theme.glass.standard} -right-12`} />
+          <CarouselPrevious className={`${theme.glass.standard} ${isFullscreen ? 'left-2' : 'left-2 sm:-left-12'}`} />
+          <CarouselNext className={`${theme.glass.standard} ${isFullscreen ? 'right-2' : 'right-2 sm:-right-12'}`} />
         </Carousel>
       </div>
 
       {/* Controls below the card */}
-      <div className="w-full max-w-7xl flex items-center justify-between px-4">
-        <span className={`text-sm ${theme.text.muted}`}>
+      <div className={`w-full ${isFullscreen ? 'max-w-[90vw] xl:max-w-7xl' : 'max-w-7xl'} flex items-center justify-between px-4 mt-4 sm:mt-6 transition-all duration-300`}>
+        <span className={`${isFullscreen ? 'text-base sm:text-lg' : 'text-sm'} ${theme.text.muted}`}>
           {current} / {count}
         </span>
 
         {onToggleFullscreen && (
           <Button
             onClick={onToggleFullscreen}
-            size="sm"
+            size={isFullscreen ? "default" : "sm"}
             variant="outline"
             className={`${theme.glass.standard} ${theme.text.primary} border-0`}
           >
             {isFullscreen ? (
               <>
                 <Minimize className="h-4 w-4 mr-2" />
-                Exit
+                Exit<span className="ml-1 hidden sm:inline">(ESC)</span>
               </>
             ) : (
               <>
