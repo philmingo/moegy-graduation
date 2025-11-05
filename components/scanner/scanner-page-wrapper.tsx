@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import DesktopWebSocketClient, { type MobileDeviceInfo } from "@/components/desktop-websocket-client"
 import config from "@/lib/theme-config"
@@ -14,6 +14,7 @@ import { CurrentGraduate } from "./current-graduate"
 import { MobileScannerPrompt } from "./mobile-scanner-prompt"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { getAnnouncementText } from "@/lib/utils/speech-utils"
+import { useAutoAnnounce } from "@/hooks/use-auto-announce"
 
 interface ConnectedMobileDevice extends MobileDeviceInfo {
   id?: string
@@ -24,9 +25,7 @@ export default function ScannerPageWrapper() {
   const isMobile = useIsMobile()
 
   // Authentication and routing
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const router = useRouter()
-  const { toast } = useToast()
 
   // Scanner state
   const [scanning, setScanning] = useState(false)
@@ -57,7 +56,6 @@ export default function ScannerPageWrapper() {
   // Search functionality
   const [searchDialogOpen, setSearchDialogOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<Student[]>([])
 
   // Voice settings - moved before functions that use them
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
@@ -67,9 +65,8 @@ export default function ScannerPageWrapper() {
   const [speechPitch, setSpeechPitch] = useState(1.0)
   const [isSpeaking, setIsSpeaking] = useState(false)
 
-  // Auto-announce toggle
-  const [autoAnnounce, setAutoAnnounce] = useState(true)
-  const [showAutoAnnounceModal, setShowAutoAnnounceModal] = useState(false)
+  // Auto-announce toggle - using custom hook for clean state management
+  const autoAnnounceControl = useAutoAnnounce()
 
   // Mobile scanner connection
   const [mobileScannerInfo, setMobileScannerInfo] = useState<ConnectedMobileDevice | null>(null)
@@ -213,7 +210,7 @@ export default function ScannerPageWrapper() {
   // Auto-announce functionality - FIXED to pass student info directly
   const handleAutoAnnounce = useCallback(
     (studentName: string, phonetic?: string, programme?: string, university?: string, classification?: string) => {
-      if (autoAnnounce && studentName) {
+      if (autoAnnounceControl.autoAnnounce && studentName) {
         const studentInfo = {
           name: studentName,
           phonetic: phonetic,
@@ -224,17 +221,12 @@ export default function ScannerPageWrapper() {
         speakName(phonetic || studentName, false, studentInfo)
       }
     },
-    [autoAnnounce, speakName],
+    [autoAnnounceControl.autoAnnounce, speakName],
   )
 
-  // Authentication check
-  useEffect(() => {
-    const authStatus = localStorage.getItem("isAuthenticated") === "true"
-    setIsAuthenticated(authStatus)
-    if (!authStatus) {
-      router.push("/login")
-    }
-  }, []) // REMOVED router dependency to prevent loops
+  // Authentication check - now handled by AuthGuard
+  // Authentication is handled by the layout's AuthGuard component
+  // No local authentication check needed here
 
   // Load voices - FIXED: More robust voice loading with retry mechanism and manual trigger
   useEffect(() => {
@@ -343,41 +335,8 @@ export default function ScannerPageWrapper() {
     }
   }, [])
 
-  // Manual voice reload when settings dialog opens - FIXED: Force voice reload on user interaction
-  useEffect(() => {
-    if (settingsDialogOpen && availableVoices.length === 0) {
-      console.log("🔄 [VOICE-LOADING] Settings dialog opened - forcing voice reload")
-      
-      // Force a fresh voice load when settings dialog opens
-      const voices = window.speechSynthesis.getVoices()
-      
-      if (voices.length > 0) {
-        const englishVoices = voices.filter(
-          (voice) =>
-            voice.lang.startsWith("en-US") ||
-            voice.lang.startsWith("en-GB") ||
-            voice.lang.startsWith("en-UK") ||
-            voice.lang === "en",
-        )
-        
-        const filteredVoices = englishVoices.length > 0 ? englishVoices : voices
-        setAvailableVoices(filteredVoices)
-        
-        if (filteredVoices.length > 0 && !selectedVoice) {
-          setSelectedVoice(filteredVoices[0].name)
-        }
-        
-        console.log(`✅ [VOICE-LOADING] Loaded ${filteredVoices.length} voices on settings open`)
-      } else {
-        // If still no voices, show a toast to inform the user
-        console.warn("⚠️ [VOICE-LOADING] No voices available even after settings dialog opened")
-        toast({
-          title: "Voice Loading Issue",
-          description: "Voice options are loading. Please wait a moment and try again.",
-        })
-      }
-    }
-  }, [settingsDialogOpen, availableVoices.length, selectedVoice, toast])
+  // Manual voice reload when settings dialog opens - REMOVED: The initial useEffect already handles voice loading
+  // No need for a separate effect that syncs state based on dialog open state
 
   // QR scan handler
   const handleScan = useCallback(
@@ -547,35 +506,7 @@ export default function ScannerPageWrapper() {
 
   // Camera switching
 
-  // Auto-announce toggle handler
-  const handleAutoAnnounceToggle = () => {
-    if (autoAnnounce) {
-      setShowAutoAnnounceModal(true)
-    } else {
-      setAutoAnnounce(true)
-    }
-  }
-
-  const confirmDisableAutoAnnounce = () => {
-    setAutoAnnounce(false)
-    setShowAutoAnnounceModal(false)
-    toast({
-      title: "Auto-Announce Disabled",
-      description: "Automatic announcements have been turned off.",
-    })
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-purple-50 to-white p-4">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Authentication Required</h1>
-          <p className="text-gray-600">Please log in to access the QR scanner</p>
-        </div>
-      </div>
-    )
-  }
-
+  // Authentication is now handled by AuthGuard in the layout, so we can directly render the scanner
   return (
     <div className={`min-h-screen ${config.theme.background} relative overflow-hidden`}>
       {/* Animated Background Elements */}
@@ -627,11 +558,11 @@ export default function ScannerPageWrapper() {
         {/* Header */}
         <AppHeader
           pageType="scanner"
-          autoAnnounce={autoAnnounce}
-          onAutoAnnounceToggle={handleAutoAnnounceToggle}
-          showAutoAnnounceModal={showAutoAnnounceModal}
-          onConfirmDisableAutoAnnounce={confirmDisableAutoAnnounce}
-          onCancelDisableAutoAnnounce={() => setShowAutoAnnounceModal(false)}
+          autoAnnounce={autoAnnounceControl.autoAnnounce}
+          onAutoAnnounceToggle={autoAnnounceControl.toggle}
+          showAutoAnnounceModal={autoAnnounceControl.showModal}
+          onConfirmDisableAutoAnnounce={autoAnnounceControl.confirmDisable}
+          onCancelDisableAutoAnnounce={autoAnnounceControl.cancelDisable}
           mobileScannerInfo={mobileScannerInfo}
           isMobileServerAssumedOffline={isMobileServerAssumedOffline}
           onManualReconnect={handleManualReconnect}
@@ -655,8 +586,6 @@ export default function ScannerPageWrapper() {
                 onSearchDialogToggle={() => setSearchDialogOpen(!searchDialogOpen)}
                 searchQuery={searchQuery}
                 onSearchQueryChange={setSearchQuery}
-                searchResults={searchResults}
-                onSearchResultsChange={setSearchResults}
                 students={studentsTyped}
                 onSelectStudent={(student) => {
                   const studentName = `${student.first_name} ${student.last_name}`
@@ -668,7 +597,6 @@ export default function ScannerPageWrapper() {
                   setScanResult({ success: true, message: `Student selected: ${studentName}` })
                   setSearchDialogOpen(false)
                   setSearchQuery("")
-                  setSearchResults([])
 
                   if (!scannedNames.has(studentName)) {
                     setScannedNames((prev) => new Set(prev).add(studentName))
@@ -742,8 +670,6 @@ export default function ScannerPageWrapper() {
                   onSearchDialogToggle={() => setSearchDialogOpen(!searchDialogOpen)}
                   searchQuery={searchQuery}
                   onSearchQueryChange={setSearchQuery}
-                  searchResults={searchResults}
-                  onSearchResultsChange={setSearchResults}
                   students={studentsTyped}
                   onSelectStudent={(student) => {
                     const studentName = `${student.first_name} ${student.last_name}`
@@ -755,7 +681,6 @@ export default function ScannerPageWrapper() {
                     setScanResult({ success: true, message: `Student selected: ${studentName}` })
                     setSearchDialogOpen(false)
                     setSearchQuery("")
-                    setSearchResults([])
 
                     if (!scannedNames.has(studentName)) {
                       setScannedNames((prev) => new Set(prev).add(studentName))

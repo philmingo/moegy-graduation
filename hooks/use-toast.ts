@@ -129,14 +129,14 @@ export const reducer = (state: State, action: Action): State => {
   }
 }
 
-const listeners: Array<(state: State) => void> = []
+const listeners: Array<() => void> = []
 
 let memoryState: State = { toasts: [] }
 
 function dispatch(action: Action) {
   memoryState = reducer(memoryState, action)
   listeners.forEach((listener) => {
-    listener(memoryState)
+    listener()
   })
 }
 
@@ -172,23 +172,26 @@ function toast({ ...props }: Toast) {
 }
 
 function useToast() {
-  const [state, setState] = React.useState<State>(memoryState)
+  const [, forceUpdate] = React.useReducer((x) => x + 1, 0)
 
   React.useEffect(() => {
-    listeners.push(setState)
+    listeners.push(forceUpdate)
     return () => {
-      const index = listeners.indexOf(setState)
+      const index = listeners.indexOf(forceUpdate)
       if (index > -1) {
         listeners.splice(index, 1)
       }
     }
-  }, [state])
+  }, [])
 
-  return {
-    ...state,
-    toast,
-    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
-  }
+  return React.useMemo(
+    () => ({
+      ...memoryState,
+      toast,
+      dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+    }),
+    [memoryState.toasts] // Only recreate when toasts actually change
+  )
 }
 
 export { useToast, toast }

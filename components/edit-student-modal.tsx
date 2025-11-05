@@ -8,7 +8,7 @@ import { X } from "lucide-react"
 import { useState, useEffect } from "react"
 import type { Student } from "@/lib/actions/students"
 import config from "@/lib/theme-config"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 
 interface EditStudentModalProps {
   student: Student | null

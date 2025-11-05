@@ -19,9 +19,7 @@ export function useIsMobile() {
     }
     mql.addEventListener("change", onChange)
     
-    // Set initial value only if it's different from current state
-    const currentIsMobile = window.innerWidth < MOBILE_BREAKPOINT
-    setIsMobile(prev => prev !== currentIsMobile ? currentIsMobile : prev)
+    // Don't set state here - it's already initialized correctly in useState
     
     return () => mql.removeEventListener("change", onChange)
   }, [])

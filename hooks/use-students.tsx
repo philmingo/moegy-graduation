@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { getStudents, addStudent, deleteStudent, deleteManyStudents, markStudentAsShared } from "@/lib/actions/students"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 
 export const STUDENTS_QUERY_KEY = ["students"]
 
@@ -47,6 +47,9 @@ export function useStudents() {
       }
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: (failureCount, error) => {
       // Don't retry on rate limit errors
       if (error instanceof Error && error.message.includes("Too Many")) {

@@ -41,8 +41,6 @@ interface ScannerControlsProps {
   onSearchDialogToggle: () => void
   searchQuery: string
   onSearchQueryChange: (query: string) => void
-  searchResults: Student[]
-  onSearchResultsChange: (results: Student[]) => void
   students: Student[]
   onSelectStudent: (student: Student) => void
   settingsDialogOpen: boolean
@@ -76,8 +74,6 @@ export function ScannerControls({
   onSearchDialogToggle,
   searchQuery,
   onSearchQueryChange,
-  searchResults,
-  onSearchResultsChange,
   students,
   onSelectStudent,
   settingsDialogOpen,
@@ -151,10 +147,7 @@ export function ScannerControls({
     return [...startsWithFirst, ...startsWithLast, ...containsResults]
   }, [students, searchQuery])
 
-  // Update search results when filtered results change
-  useEffect(() => {
-    onSearchResultsChange(filteredStudents)
-  }, [filteredStudents, onSearchResultsChange])
+  // No need to sync - parent can use filteredStudents directly via ref or pass it back differently
 
   // Check if the selected voice is a "natural" voice that might not support pitch
   const isNaturalVoice =
@@ -375,9 +368,9 @@ export function ScannerControls({
               </div>
 
               <div className="max-h-96 overflow-y-auto">
-                {searchQuery && searchResults.length > 0 ? (
+                {searchQuery && filteredStudents.length > 0 ? (
                   <div className="space-y-2">
-                    {searchResults.map((student) => (
+                    {filteredStudents.map((student) => (
                       <div
                         key={student.id}
                         onClick={() => onSelectStudent(student)}

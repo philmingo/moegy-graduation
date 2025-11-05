@@ -22,7 +22,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import MobileQrScanner from "@/components/mobile-qr-scanner"
 import MobileLogin from "@/components/mobile-login"
 import { Toaster } from "@/components/ui/toaster"

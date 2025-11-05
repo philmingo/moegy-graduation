@@ -15,8 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { GraduationCap, Home, ScanLine, Smartphone, LogOut, QrCode, RefreshCw, BookHeart } from "lucide-react"
-import { useToast } from "@/components/ui/use-toast"
-import { useState, useEffect } from "react"
+import { useToast } from "@/hooks/use-toast"
+import { useState, useEffect, memo } from "react"
 import config from "@/lib/theme-config"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { createClient } from "@/lib/supabase"
@@ -32,7 +32,7 @@ interface AppHeaderProps {
   pageType?: "admin" | "scanner" | "guest-book"
   // Scanner-specific props
   autoAnnounce?: boolean
-  onAutoAnnounceToggle?: () => void
+  onAutoAnnounceToggle?: (checked: boolean) => void
   showAutoAnnounceModal?: boolean
   onConfirmDisableAutoAnnounce?: () => void
   onCancelDisableAutoAnnounce?: () => void
@@ -41,7 +41,7 @@ interface AppHeaderProps {
   onManualReconnect?: () => void
 }
 
-export default function AppHeader({
+const AppHeader = memo(function AppHeader({
   pageType = "admin",
   autoAnnounce = false,
   onAutoAnnounceToggle,
@@ -764,7 +764,16 @@ export default function AppHeader({
 
       {/* Auto-Announce Confirmation Modal - Scanner only */}
       {isScanner && (
-        <Dialog open={showAutoAnnounceModal} onOpenChange={onCancelDisableAutoAnnounce}>
+        <Dialog 
+          open={showAutoAnnounceModal} 
+          onOpenChange={(open) => {
+            // Only close the modal when user clicks outside or presses ESC
+            // Don't change autoAnnounce state here
+            if (!open && onCancelDisableAutoAnnounce) {
+              onCancelDisableAutoAnnounce()
+            }
+          }}
+        >
           <DialogContent
             className={`${config.theme.modal.background} ${config.theme.modal.border} ${config.ui.borderRadius.medium}`}
           >
@@ -799,4 +808,6 @@ export default function AppHeader({
       )}
     </>
   )
-}
+})
+
+export default AppHeader

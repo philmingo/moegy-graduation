@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import config from "@/lib/theme-config"
 import { getStudents, type Student } from "@/lib/actions/students"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { QRCard } from "@/components/qr-card"
 import { downloadQRCardAsImage, copyQRCardAsImage } from "@/lib/utils/image-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -186,20 +186,29 @@ export default function StudentQRSearch() {
     return scale
   }, [windowWidth, windowHeight])
 
-  // Check admin login status
+  // Check admin login status using Supabase
   useEffect(() => {
-    const checkAuthStatus = () => {
-      const isAuthenticated = localStorage.getItem("isAuthenticated") === "true"
-      setIsAdminLoggedIn(isAuthenticated)
+    const checkAuthStatus = async () => {
+      const supabase = (await import("@/lib/supabase")).createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      setIsAdminLoggedIn(!!session)
     }
 
     checkAuthStatus()
 
-    // Listen for storage changes (when user logs in/out in another tab)
-    window.addEventListener("storage", checkAuthStatus)
+    // Listen for auth state changes
+    const supabasePromise = import("@/lib/supabase").then(({ createClient }) => createClient())
+    let cleanup: (() => void) | undefined
+    supabasePromise.then(supabase => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setIsAdminLoggedIn(!!session)
+      })
+      
+      cleanup = () => subscription.unsubscribe()
+    })
 
     return () => {
-      window.removeEventListener("storage", checkAuthStatus)
+      if (cleanup) cleanup()
     }
   }, [])
 

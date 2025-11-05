@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Html5Qrcode } from "html5-qrcode"
 import { Button } from "@/components/ui/button"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { Camera, CameraOff, Play, Square, AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
 import { currentTheme } from "@/lib/theme-config"
 import {
