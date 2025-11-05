@@ -8,6 +8,10 @@ export interface GuestBookMessage {
   student_name: string
   student_location: string
   message_image_url: string
+  student_photo_url?: string | null
+  student_university?: string | null
+  student_programme?: string | null
+  student_classification?: string | null
   approved: boolean
   created_at: string
   updated_at: string
@@ -28,7 +32,8 @@ export async function getGuestBookMessages(): Promise<GuestBookMessage[]> {
 
   const supabase = createClient()
 
-  const { data, error } = await supabase
+  // First, get the messages
+  const { data: messages, error } = await supabase
     .from("voceo_guest_book_messages")
     .select("*")
     .eq("approved", true)
@@ -39,8 +44,41 @@ export async function getGuestBookMessages(): Promise<GuestBookMessage[]> {
     throw new Error(`Failed to fetch guest book messages: ${error.message}`)
   }
 
-  console.log(`✅ [SERVER] getGuestBookMessages - Successfully fetched ${data?.length || 0} messages`)
-  return data || []
+  if (!messages || messages.length === 0) {
+    console.log("✅ [SERVER] getGuestBookMessages - No messages found")
+    return []
+  }
+
+  // Fetch student data for each message to get university, programme, and classification
+  const studentIds = messages.map(m => m.student_id)
+  const { data: students, error: studentError } = await supabase
+    .from("students")
+    .select("id, university, programme, classification")
+    .in("id", studentIds)
+
+  if (studentError) {
+    console.warn("⚠️ [SERVER] getGuestBookMessages - Failed to fetch student data:", studentError)
+    // Return messages without student data if fetch fails
+    return messages
+  }
+
+  // Create a map of student data by student_id
+  const studentMap = new Map(students?.map(s => [s.id, s]) || [])
+
+  // Merge student data into messages
+  const enrichedMessages = messages.map(message => {
+    const student = studentMap.get(message.student_id)
+    return {
+      ...message,
+      student_university: student?.university || message.student_university || null,
+      student_programme: student?.programme || message.student_programme || null,
+      student_classification: student?.classification || message.student_classification || null,
+      student_photo_url: message.student_photo_url || null,
+    }
+  })
+
+  console.log(`✅ [SERVER] getGuestBookMessages - Successfully fetched ${enrichedMessages.length} messages with student data`)
+  return enrichedMessages
 }
 
 /**
@@ -89,12 +127,29 @@ export async function createGuestBookMessage(messageData: CreateMessageData): Pr
 
     console.log("🔄 [SERVER] createGuestBookMessage - Public URL:", imageUrl)
 
-    // Step 3: Insert message record into database
+    // Step 3: Fetch student data to include in the message
+    const { data: studentData, error: studentError } = await supabase
+      .from("students")
+      .select("university, programme, classification")
+      .eq("id", messageData.studentId)
+      .single()
+
+    if (studentError) {
+      console.error("❌ [SERVER] createGuestBookMessage - Failed to fetch student data:", studentError)
+    } else {
+      console.log("✅ [SERVER] createGuestBookMessage - Student data fetched:", studentData)
+    }
+
+    // Step 4: Insert message record into database
     const messageRecord = {
       student_id: messageData.studentId,
       student_name: messageData.studentName,
       student_location: messageData.studentLocation,
       message_image_url: imageUrl,
+      student_photo_url: null, // Students table doesn't have photo_url column
+      student_university: studentData?.university || null,
+      student_programme: studentData?.programme || null,
+      student_classification: studentData?.classification || null,
       approved: true,
     }
 
@@ -175,6 +230,66 @@ export async function deleteGuestBookMessage(id: string): Promise<void> {
     console.log("✅ [SERVER] deleteGuestBookMessage - Successfully deleted message:", id)
   } catch (error) {
     console.error("❌ [SERVER] deleteGuestBookMessage - Error:", error)
+    throw error
+  }
+}
+
+/**
+ * Delete all guest book messages and their associated images
+ */
+export async function deleteAllGuestBookMessages(): Promise<void> {
+  console.log("🔄 [SERVER] deleteAllGuestBookMessages - Deleting all messages")
+
+  const supabase = createClient()
+
+  try {
+    // Step 1: Get all messages to find their image URLs
+    const { data: messages, error: fetchError } = await supabase
+      .from("voceo_guest_book_messages")
+      .select("id, message_image_url")
+
+    if (fetchError) {
+      console.error("❌ [SERVER] deleteAllGuestBookMessages - Fetch error:", fetchError)
+      throw new Error(`Failed to fetch messages: ${fetchError.message}`)
+    }
+
+    if (!messages || messages.length === 0) {
+      console.log("✅ [SERVER] deleteAllGuestBookMessages - No messages to delete")
+      return
+    }
+
+    // Step 2: Extract all file paths and delete from storage
+    const filePaths = messages.map(message => {
+      const url = new URL(message.message_image_url)
+      const pathParts = url.pathname.split("/")
+      return pathParts.slice(pathParts.indexOf("messages")).join("/")
+    })
+
+    console.log(`🔄 [SERVER] deleteAllGuestBookMessages - Deleting ${filePaths.length} images from storage`)
+
+    const { error: storageError } = await supabase.storage
+      .from("voceo-guest-book-messages")
+      .remove(filePaths)
+
+    if (storageError) {
+      console.warn("⚠️ [SERVER] deleteAllGuestBookMessages - Storage deletion warning:", storageError)
+      // Continue even if storage deletion fails
+    }
+
+    // Step 3: Delete all database records
+    const { error: deleteError } = await supabase
+      .from("voceo_guest_book_messages")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000") // Delete all records
+
+    if (deleteError) {
+      console.error("❌ [SERVER] deleteAllGuestBookMessages - Delete error:", deleteError)
+      throw new Error(`Failed to delete messages: ${deleteError.message}`)
+    }
+
+    console.log(`✅ [SERVER] deleteAllGuestBookMessages - Successfully deleted ${messages.length} messages`)
+  } catch (error) {
+    console.error("❌ [SERVER] deleteAllGuestBookMessages - Error:", error)
     throw error
   }
 }

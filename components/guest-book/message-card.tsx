@@ -14,30 +14,75 @@ export function MessageCard({
   message, 
   className = ""
 }: MessageCardProps) {
+  // Check if message has a student photo URL (we'll add this field to the message type later)
+  const hasStudentPhoto = message.student_photo_url && message.student_photo_url.trim() !== ''
+
   return (
     <Card className={`bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden w-full mx-auto border-0 ${className}`}>
-      <div className="grid grid-cols-1 sm:grid-cols-10 min-h-[400px] sm:min-h-[500px] md:min-h-[600px] lg:min-h-[650px] max-h-[80vh]">
-        {/* Left Side - Photo/Gradient (30%) */}
-        <CardHeader className="sm:col-span-3 bg-gradient-to-br from-violet-400 via-purple-400 to-pink-400 p-4 sm:p-6 flex flex-col justify-center items-center">
-          <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-2xl sm:rounded-3xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl mb-3 sm:mb-6">
-            <span className="text-3xl sm:text-5xl md:text-6xl font-bold text-white">
-              {message.student_name.split(' ').map(n => n[0]).join('')}
-            </span>
-          </div>
-          
-          <div className="text-center">
-            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-2 sm:mb-3">
-              {message.student_name}
-            </h2>
-            <div className="inline-flex items-center gap-1 sm:gap-2 text-white/90 bg-white/20 backdrop-blur-sm px-2 sm:px-4 py-1 sm:py-2 rounded-full">
-              <MapPin size={14} className="sm:w-[18px] sm:h-[18px]" />
-              <span className="text-xs sm:text-base">{message.student_location}</span>
+      <div className={`grid grid-cols-1 min-h-[400px] sm:min-h-[500px] md:min-h-[600px] lg:min-h-[650px] max-h-[80vh] ${hasStudentPhoto ? 'sm:grid-cols-10' : 'sm:grid-cols-10'}`}>
+        {/* Left Side - Photo/Gradient - Dynamic sizing based on whether there's a photo */}
+        <CardHeader className={`${hasStudentPhoto ? 'sm:col-span-7 md:col-span-8' : 'sm:col-span-3'} bg-gradient-to-br from-violet-400 via-purple-400 to-pink-400 p-4 sm:p-6 flex flex-col justify-center items-center transition-all duration-300`}>
+          {hasStudentPhoto ? (
+            // When student has a photo - Large photo display (75-80% height, 90% width)
+            <div className="w-full h-full flex flex-col justify-center items-center gap-3 sm:gap-6">
+              <div className="relative w-[90%] h-[75%] sm:h-[80%] rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-4 border-white/30">
+                <Image
+                  src={message.student_photo_url!}
+                  alt={message.student_name}
+                  fill
+                  className="object-cover"
+                  priority
+                />
+              </div>
+              
+              <div className="text-center space-y-2 sm:space-y-3">
+                <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-white drop-shadow-lg">
+                  {message.student_name}
+                </h2>
+                
+                <div className="inline-flex items-center gap-1 sm:gap-2 text-white/90 bg-white/20 backdrop-blur-sm px-2 sm:px-4 py-1 sm:py-2 rounded-full">
+                  <MapPin size={14} className="sm:w-[18px] sm:h-[18px]" />
+                  <span className="text-xs sm:text-base">{message.student_location}</span>
+                </div>
+                
+                {message.student_programme && (
+                  <div className="inline-flex items-center gap-1 sm:gap-2 text-white/90 bg-white/20 backdrop-blur-sm px-2 sm:px-4 py-1 sm:py-2 rounded-full">
+                    <span className="text-xs sm:text-base">📚 {message.student_programme}</span>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            // Original design - Initials icon when no photo
+            <>
+              <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-2xl sm:rounded-3xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl mb-3 sm:mb-6">
+                <span className="text-3xl sm:text-5xl md:text-6xl font-bold text-white">
+                  {message.student_name.split(' ').map(n => n[0]).join('')}
+                </span>
+              </div>
+              
+              <div className="text-center space-y-2 sm:space-y-3">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white">
+                  {message.student_name}
+                </h2>
+                
+                <div className="inline-flex items-center gap-1 sm:gap-2 text-white/90 bg-white/20 backdrop-blur-sm px-2 sm:px-4 py-1 sm:py-2 rounded-full">
+                  <MapPin size={14} className="sm:w-[18px] sm:h-[18px]" />
+                  <span className="text-xs sm:text-base">{message.student_location}</span>
+                </div>
+                
+                {message.student_programme && (
+                  <div className="inline-flex items-center gap-1 sm:gap-2 text-white/90 bg-white/20 backdrop-blur-sm px-2 sm:px-4 py-1 sm:py-2 rounded-full">
+                    <span className="text-xs sm:text-base">📚 {message.student_programme}</span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </CardHeader>
 
-        {/* Right Side - Message (70%) */}
-        <CardContent className="sm:col-span-7 p-4 sm:p-8 md:p-10 lg:pr-16 flex flex-col">
+        {/* Right Side - Message - Dynamic sizing based on photo presence */}
+        <CardContent className={`${hasStudentPhoto ? 'sm:col-span-3 md:col-span-2' : 'sm:col-span-7'} p-4 sm:p-8 md:p-10 lg:pr-16 flex flex-col transition-all duration-300`}>
           <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-6">
             <div className="w-1 h-6 sm:h-8 bg-gradient-to-b from-violet-600 to-purple-600 rounded-full"></div>
             <h3 className="text-base sm:text-lg md:text-xl font-medium text-gray-700">Their Message</h3>

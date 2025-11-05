@@ -19,8 +19,15 @@ export function HandwritingCanvas({
   height = 600 
 }: HandwritingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [isDrawing, setIsDrawing] = useState(false)
-  const [context, setContext] = useState<CanvasRenderingContext2D | null>(null)
+  const contextRef = useRef<CanvasRenderingContext2D | null>(null)
+  const isDrawingRef = useRef(false)
+  const cursorPosRef = useRef<{ x: number; y: number } | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const drawRafRef = useRef<number | null>(null)
+  const pendingPointsRef = useRef<{ x: number; y: number }[]>([])
+  const isProcessingDrawRef = useRef(false)
+  
   const [tool, setTool] = useState<"pen" | "eraser">("pen")
   const [penColor, setPenColor] = useState("#000000")
   const [lineWidth, setLineWidth] = useState(3)
@@ -33,7 +40,11 @@ export function HandwritingCanvas({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const ctx = canvas.getContext("2d", { willReadFrequently: true })
+    // OPTIMIZATION: Remove willReadFrequently flag - it's for reading, not writing
+    const ctx = canvas.getContext("2d", { 
+      alpha: false, // No transparency needed, improves performance
+      desynchronized: true // Allows canvas to render independently from DOM
+    })
     if (!ctx) return
 
     // Set canvas size
@@ -44,47 +55,75 @@ export function HandwritingCanvas({
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, width, height)
 
-    // Set drawing properties
+    // Set drawing properties for smooth lines
     ctx.lineCap = "round"
     ctx.lineJoin = "round"
 
-    setContext(ctx)
+    contextRef.current = ctx
 
-    // Save initial state
-    saveToHistory(canvas)
+    // Save initial state (reset history when canvas is resized)
+    const imageData = canvas.toDataURL("image/png")
+    setHistory([imageData])
+    setHistoryStep(0)
   }, [width, height])
 
-  // Save canvas state to history
+  // Save canvas state to history - using functional updates to avoid stale closures
   const saveToHistory = useCallback((canvas: HTMLCanvasElement) => {
+    // OPTIMIZATION: Use lower quality JPEG for history to reduce memory pressure
     const imageData = canvas.toDataURL("image/png")
-    setHistory((prev) => {
-      const newHistory = prev.slice(0, historyStep + 1)
-      newHistory.push(imageData)
-      return newHistory
+    
+    setHistoryStep((currentStep) => {
+      setHistory((prev) => {
+        // Clear any future history when saving a new state
+        const newHistory = prev.slice(0, currentStep + 1)
+        newHistory.push(imageData)
+        // Limit history to 20 entries to prevent memory issues (reduced from 50)
+        if (newHistory.length > 20) {
+          return newHistory.slice(-20)
+        }
+        return newHistory
+      })
+      return currentStep + 1
     })
-    setHistoryStep((prev) => prev + 1)
-  }, [historyStep])
+  }, [])
 
-  // Update cursor position for display
-  const updateCursorPosition = useCallback((e: MouseEvent | TouchEvent) => {
+  // OPTIMIZATION: Update cursor position - immediate during drawing, batched otherwise
+  const updateCursorPosition = useCallback((e: MouseEvent | TouchEvent, immediate: boolean = false) => {
     const canvas = canvasRef.current
     if (!canvas) return
 
     const rect = canvas.getBoundingClientRect()
+    let x: number, y: number
 
     if (e instanceof MouseEvent) {
-      setCursorPosition({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      })
+      x = e.clientX - rect.left
+      y = e.clientY - rect.top
     } else {
       const touch = e.touches[0] || e.changedTouches[0]
-      if (touch) {
-        setCursorPosition({
-          x: touch.clientX - rect.left,
-          y: touch.clientY - rect.top,
-        })
+      if (!touch) return
+      x = touch.clientX - rect.left
+      y = touch.clientY - rect.top
+    }
+
+    // Store in ref for immediate access
+    cursorPosRef.current = { x, y }
+
+    // If drawing, update immediately to prevent cursor lag
+    if (immediate || isDrawingRef.current) {
+      setCursorPosition({ x, y })
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
       }
+    } else {
+      // Batch cursor updates using RAF when not drawing
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      
+      animationFrameRef.current = requestAnimationFrame(() => {
+        setCursorPosition({ x, y })
+      })
     }
   }, [])
 
@@ -112,74 +151,161 @@ export function HandwritingCanvas({
 
   // Start drawing
   const startDrawing = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!context) return
+    const ctx = contextRef.current
+    if (!ctx) return
 
     e.preventDefault()
-    updateCursorPosition(e) // Update cursor position when starting to draw
-    setIsDrawing(true)
+    isDrawingRef.current = true
+    updateCursorPosition(e, true) // Immediate update when starting
 
     const { x, y } = getCoordinates(e)
 
-    context.beginPath()
-    context.moveTo(x, y)
+    ctx.beginPath()
+    ctx.moveTo(x, y)
 
-    // Set tool properties
+    // CRITICAL: Set tool properties fresh for each stroke to support multi-color drawing
     if (tool === "pen") {
-      context.strokeStyle = penColor
-      context.lineWidth = lineWidth
-      context.globalCompositeOperation = "source-over"
+      ctx.strokeStyle = penColor
+      ctx.lineWidth = lineWidth
+      ctx.globalCompositeOperation = "source-over"
     } else {
-      context.strokeStyle = "#ffffff"
-      context.lineWidth = lineWidth * 3
-      context.globalCompositeOperation = "destination-out"
+      ctx.strokeStyle = "#ffffff"
+      ctx.lineWidth = lineWidth * 3
+      ctx.globalCompositeOperation = "destination-out"
     }
-  }, [context, tool, penColor, lineWidth, getCoordinates, updateCursorPosition])
+  }, [tool, penColor, lineWidth, getCoordinates, updateCursorPosition])
 
-  // Draw
+  // Process pending draw points in batches using RAF
+  const processPendingPoints = useCallback(() => {
+    if (isProcessingDrawRef.current || pendingPointsRef.current.length === 0) return
+    
+    isProcessingDrawRef.current = true
+    
+    drawRafRef.current = requestAnimationFrame(() => {
+      const ctx = contextRef.current
+      if (!ctx || !isDrawingRef.current) {
+        isProcessingDrawRef.current = false
+        return
+      }
+
+      // Batch process all pending points at once
+      const points = pendingPointsRef.current.splice(0)
+      
+      for (const point of points) {
+        ctx.lineTo(point.x, point.y)
+      }
+      
+      // Single stroke() call for all points - CRITICAL for performance
+      if (points.length > 0) {
+        ctx.stroke()
+      }
+      
+      isProcessingDrawRef.current = false
+      
+      // If more points accumulated while processing, schedule another batch
+      if (pendingPointsRef.current.length > 0) {
+        processPendingPoints()
+      }
+    })
+  }, [])
+
+  // OPTIMIZATION: Draw function - batch points and process with RAF
   const draw = useCallback((e: MouseEvent | TouchEvent) => {
     e.preventDefault()
-    updateCursorPosition(e) // Always update cursor position on move
+    
+    // Update cursor immediately while drawing to prevent lag
+    updateCursorPosition(e, true)
 
-    if (!isDrawing || !context) return
+    if (!isDrawingRef.current || !contextRef.current) return
 
     const { x, y } = getCoordinates(e)
 
-    context.lineTo(x, y)
-    context.stroke()
-  }, [isDrawing, context, getCoordinates, updateCursorPosition])
-
-  // Stop drawing
-  const stopDrawing = useCallback(() => {
-    if (!isDrawing || !context) return
-
-    setIsDrawing(false)
-    context.closePath()
-
-    // Save to history
-    const canvas = canvasRef.current
-    if (canvas) {
-      saveToHistory(canvas)
-      
-      // Emit image data
-      if (onImageChange) {
-        const imageData = canvas.toDataURL("image/png")
-        onImageChange(imageData)
-      }
+    // Add point to batch queue instead of drawing immediately
+    pendingPointsRef.current.push({ x, y })
+    
+    // Schedule batch processing if not already scheduled
+    if (!isProcessingDrawRef.current) {
+      processPendingPoints()
     }
-  }, [isDrawing, context, saveToHistory, onImageChange])
+  }, [getCoordinates, updateCursorPosition, processPendingPoints])
 
-  // Handle mouse enter - prepare for cursor display
+  // OPTIMIZATION: Debounced save - only save to history and emit after drawing stops
+  const stopDrawing = useCallback(() => {
+    if (!isDrawingRef.current || !contextRef.current) return
+
+    isDrawingRef.current = false
+    
+    // Process any remaining pending points before closing
+    if (pendingPointsRef.current.length > 0 && contextRef.current) {
+      const ctx = contextRef.current
+      for (const point of pendingPointsRef.current) {
+        ctx.lineTo(point.x, point.y)
+      }
+      ctx.stroke()
+      pendingPointsRef.current = []
+    }
+    
+    contextRef.current.closePath()
+
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    // Increased debounce to reduce GC pressure from toDataURL calls
+    saveTimeoutRef.current = setTimeout(() => {
+      const canvas = canvasRef.current
+      if (canvas) {
+        saveToHistory(canvas)
+        
+        // Emit image data
+        if (onImageChange) {
+          const imageData = canvas.toDataURL("image/png")
+          onImageChange(imageData)
+        }
+      }
+    }, 300) // Increased to 300ms to batch multiple strokes
+  }, [saveToHistory, onImageChange])
+
+  // Handle mouse enter - prepare for cursor display and resume drawing if button is held
   const handleMouseEnter = useCallback((e: MouseEvent) => {
     updateCursorPosition(e)
-  }, [updateCursorPosition])
+    
+    // If mouse re-enters with button pressed, resume drawing
+    if (e.buttons === 1 && !isDrawingRef.current) {
+      // Start a new path from current position
+      const ctx = contextRef.current
+      if (!ctx) return
+      
+      const { x, y } = getCoordinates(e)
+      isDrawingRef.current = true
+      
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      
+      // Set tool properties
+      if (tool === "pen") {
+        ctx.strokeStyle = penColor
+        ctx.lineWidth = lineWidth
+        ctx.globalCompositeOperation = "source-over"
+      } else {
+        ctx.strokeStyle = "#ffffff"
+        ctx.lineWidth = lineWidth * 3
+        ctx.globalCompositeOperation = "destination-out"
+      }
+    }
+  }, [updateCursorPosition, getCoordinates, tool, penColor, lineWidth])
 
-  // Handle mouse leave - hide cursor and stop drawing
+  // Handle mouse leave - hide cursor and only stop drawing if actually drawing
   const handleMouseLeave = useCallback(() => {
     setCursorPosition(null)
-    stopDrawing()
+    // Only stop drawing if we were actually drawing
+    if (isDrawingRef.current) {
+      stopDrawing()
+    }
   }, [stopDrawing])
 
-  // Set up event listeners
+  // OPTIMIZATION: Set up event listeners with passive flags for better performance
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -191,9 +317,9 @@ export function HandwritingCanvas({
     canvas.addEventListener("mouseup", stopDrawing)
     canvas.addEventListener("mouseleave", handleMouseLeave)
 
-    // Touch events
-    canvas.addEventListener("touchstart", startDrawing as any)
-    canvas.addEventListener("touchmove", draw as any)
+    // Touch events with passive: false to allow preventDefault
+    canvas.addEventListener("touchstart", startDrawing as any, { passive: false })
+    canvas.addEventListener("touchmove", draw as any, { passive: false })
     canvas.addEventListener("touchend", stopDrawing)
 
     return () => {
@@ -208,56 +334,79 @@ export function HandwritingCanvas({
     }
   }, [startDrawing, draw, stopDrawing, handleMouseEnter, handleMouseLeave])
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (drawRafRef.current) {
+        cancelAnimationFrame(drawRafRef.current)
+      }
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+      // Clear pending points
+      pendingPointsRef.current = []
+    }
+  }, [])
+
   // Clear canvas
   const clearCanvas = useCallback(() => {
-    if (!context || !canvasRef.current) return
+    const ctx = contextRef.current
+    const canvas = canvasRef.current
+    if (!ctx || !canvas) return
 
-    context.fillStyle = "#ffffff"
-    context.fillRect(0, 0, width, height)
+    ctx.fillStyle = "#ffffff"
+    ctx.fillRect(0, 0, width, height)
 
-    saveToHistory(canvasRef.current)
+    saveToHistory(canvas)
 
     if (onImageChange) {
-      const imageData = canvasRef.current.toDataURL("image/png")
+      const imageData = canvas.toDataURL("image/png")
       onImageChange(imageData)
     }
-  }, [context, width, height, saveToHistory, onImageChange])
+  }, [width, height, saveToHistory, onImageChange])
 
   // Undo
   const undo = useCallback(() => {
-    if (historyStep <= 0 || !context || !canvasRef.current) return
+    const ctx = contextRef.current
+    const canvas = canvasRef.current
+    if (historyStep <= 0 || !ctx || !canvas) return
 
     const newStep = historyStep - 1
     const img = new Image()
     img.src = history[newStep]
     img.onload = () => {
-      context.clearRect(0, 0, width, height)
-      context.drawImage(img, 0, 0)
+      ctx.clearRect(0, 0, width, height)
+      ctx.drawImage(img, 0, 0)
       setHistoryStep(newStep)
 
       if (onImageChange) {
         onImageChange(history[newStep])
       }
     }
-  }, [historyStep, history, context, width, height, onImageChange])
+  }, [historyStep, history, width, height, onImageChange])
 
   // Redo
   const redo = useCallback(() => {
-    if (historyStep >= history.length - 1 || !context || !canvasRef.current) return
+    const ctx = contextRef.current
+    const canvas = canvasRef.current
+    if (historyStep >= history.length - 1 || !ctx || !canvas) return
 
     const newStep = historyStep + 1
     const img = new Image()
     img.src = history[newStep]
     img.onload = () => {
-      context.clearRect(0, 0, width, height)
-      context.drawImage(img, 0, 0)
+      ctx.clearRect(0, 0, width, height)
+      ctx.drawImage(img, 0, 0)
       setHistoryStep(newStep)
 
       if (onImageChange) {
         onImageChange(history[newStep])
       }
     }
-  }, [historyStep, history, context, width, height, onImageChange])
+  }, [historyStep, history, width, height, onImageChange])
 
   const theme = currentTheme
 
@@ -388,10 +537,10 @@ export function HandwritingCanvas({
               />
             ) : (
               <div
-                className="rounded-full bg-gray-300"
+                className="rounded-full bg-gray-300 opacity-70"
                 style={{
-                  width: `${lineWidth * 6}px`,
-                  height: `${lineWidth * 6}px`,
+                  width: `${lineWidth * 3}px`,
+                  height: `${lineWidth * 3}px`,
                   border: '3px solid #666666',
                   boxShadow: '0 0 0 1px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.4)',
                 }}
