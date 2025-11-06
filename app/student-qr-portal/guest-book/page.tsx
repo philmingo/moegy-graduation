@@ -87,7 +87,7 @@ export default function StudentGuestBookPage() {
             <div className="flex items-center justify-between mb-6">
               <Link href="/student-qr-portal">
                 <Button
-                  className={`bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-6 py-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-300`}
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-6 py-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-300"
                 >
                   <ArrowLeft className="h-5 w-5 mr-2" />
                   Back to Portal
@@ -108,16 +108,6 @@ export default function StudentGuestBookPage() {
               <p className={`text-lg ${theme.text.secondary}`}>
                 Messages from our graduates
               </p>
-              
-              {/* Real-time Status Info - Only show if using polling fallback */}
-              {showRealtimeWarning && (
-                <div className="mt-4 mx-auto max-w-md">
-                  <div className={`${theme.glass.standard} rounded-lg px-4 py-2 text-sm ${theme.text.secondary} border border-yellow-400/20`}>
-                    <span className="inline-block mr-2">ℹ️</span>
-                    Using automatic updates (checking every 10 seconds)
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
-import { Search, QrCode, Users, Star, GraduationCap, X, ChevronDown, User, LayoutDashboard } from "lucide-react"
+import { Search, QrCode, Users, Star, GraduationCap, X, ChevronDown, User, LayoutDashboard, MessageSquare } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -629,8 +629,19 @@ export default function StudentQRSearch() {
           </div>
         </div>
 
-        {/* Responsive Admin/Dashboard Button */}
-        <div className={`${isMobile ? "fixed top-4 right-4" : "absolute top-6 right-6"} z-20`}>
+        {/* Responsive Admin/Dashboard and Guest Book Buttons */}
+        <div className={`${isMobile ? "fixed top-4 right-4" : "absolute top-6 right-6"} z-20 flex gap-3`}>
+          {/* Guest Book Button */}
+          <Link href="/student-qr-portal/guest-book">
+            <Button
+              className={`bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white ${isMobile ? "px-4 py-2 text-sm" : "px-6 py-2"} ${config.ui.borderRadius.small} ${config.ui.shadows.medium} hover:${config.ui.shadows.large} transition-all duration-300`}
+            >
+              <MessageSquare className={`${isMobile ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
+              {isMobile ? "Guest Book" : "Guest Book"}
+            </Button>
+          </Link>
+
+          {/* Admin Button */}
           {isAdminLoggedIn ? (
             <Link href="/admin">
               <Button

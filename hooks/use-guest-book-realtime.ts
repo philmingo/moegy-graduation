@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import { createClient } from "@/lib/supabase"
 import { useQueryClient } from "@tanstack/react-query"
+import type { RealtimeChannel } from "@supabase/supabase-js"
 
 interface UseGuestBookRealtimeOptions {
   enabled?: boolean
@@ -11,15 +12,24 @@ interface UseGuestBookRealtimeOptions {
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'error' | 'disconnected'
 
+// Global singleton channel to prevent multiple subscriptions
+let globalChannel: RealtimeChannel | null = null
+let globalSubscriberCount = 0
+let globalCallbacks: Set<() => void> = new Set()
+let globalQueryClient: any = null
+let isSubscribing = false // Prevent concurrent subscription attempts
+let subscriptionPromise: Promise<void> | null = null
+
 export function useGuestBookRealtime(options: UseGuestBookRealtimeOptions = {}) {
   const { enabled = true } = options
   const [status, setStatus] = useState<RealtimeStatus>('connecting')
   const queryClient = useQueryClient()
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const channelRef = useRef<any>(null)
   const retryCountRef = useRef(0)
-  const onUpdateRef = useRef(options.onUpdate) // Use ref to avoid dependency issues
-  const maxRetries = 1 // Reduced from 3 - fail fast and use polling instead
+  const onUpdateRef = useRef(options.onUpdate)
+  const isSubscribedRef = useRef(false)
+  const subscriberIdRef = useRef<number>(0)
+  const maxRetries = 1
 
   // Update ref when callback changes
   useEffect(() => {
@@ -35,6 +45,24 @@ export function useGuestBookRealtime(options: UseGuestBookRealtimeOptions = {}) 
 
     const supabase = createClient()
     let isCleanedUp = false
+    
+    // Register this subscriber
+    globalSubscriberCount++
+    subscriberIdRef.current = globalSubscriberCount
+    const subscriberId = subscriberIdRef.current
+    console.log(`👤 [REALTIME-HOOK] Subscriber #${subscriberId} joining (total: ${globalSubscriberCount})`)
+    
+    // Store query client globally if not set
+    if (!globalQueryClient) {
+      globalQueryClient = queryClient
+    }
+    
+    // Add callback to global set if provided
+    if (onUpdateRef.current) {
+      globalCallbacks.add(onUpdateRef.current)
+    }
+    
+    isSubscribedRef.current = true
 
     const setupSubscription = async () => {
       if (isCleanedUp) {
@@ -42,84 +70,133 @@ export function useGuestBookRealtime(options: UseGuestBookRealtimeOptions = {}) 
         return
       }
 
-      // Clear any existing channel
-      if (channelRef.current) {
-        console.log("🧹 [REALTIME-HOOK] Removing old channel before creating new one")
-        await supabase.removeChannel(channelRef.current)
-        channelRef.current = null
+      // If already subscribing, wait for that to complete
+      if (isSubscribing && subscriptionPromise) {
+        console.log(`⏳ [REALTIME-HOOK] Subscription in progress, waiting for subscriber #${subscriberId}`)
+        await subscriptionPromise
+        if (globalChannel && globalChannel.state === 'joined') {
+          console.log(`✅ [REALTIME-HOOK] Reusing newly established channel for subscriber #${subscriberId}`)
+          setStatus('connected')
+        }
+        return
       }
 
-      // Small delay to ensure clean state
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // If channel already exists and is joined, reuse it
+      if (globalChannel && globalChannel.state === 'joined') {
+        console.log(`♻️ [REALTIME-HOOK] Reusing existing global channel for subscriber #${subscriberId}`)
+        setStatus('connected')
+        return
+      }
 
-      const channelName = `guest-book-realtime-${Date.now()}`
-      console.log(`🔄 [REALTIME-HOOK] Setting up subscription with channel: ${channelName}`)
-      setStatus('connecting')
+      // Mark as subscribing
+      isSubscribing = true
+      subscriptionPromise = (async () => {
+        try {
+          // Clean up any existing channel
+          if (globalChannel) {
+            console.log("🧹 [REALTIME-HOOK] Cleaning up existing channel")
+            try {
+              await supabase.removeChannel(globalChannel)
+            } catch (err) {
+              console.warn("⚠️ [REALTIME-HOOK] Error removing old channel:", err)
+            }
+            globalChannel = null
+          }
 
-      channelRef.current = supabase
-        .channel(channelName, {
-          config: {
-            broadcast: { self: false },
-            presence: { key: '' },
-          },
-        })
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "voceo_guest_book_messages",
-          },
-          (payload) => {
-            console.log("📨 [REALTIME-HOOK] Database change detected:", {
-              event: payload.eventType,
-              table: payload.table,
-              timestamp: new Date().toISOString(),
-            })
-            
-            // Invalidate queries to trigger refetch
-            console.log("♻️ [REALTIME-HOOK] Invalidating guestBookMessages query cache")
-            queryClient.invalidateQueries({ queryKey: ["guestBookMessages"] })
-            
-            // Call optional callback using ref
-            if (onUpdateRef.current) {
-              console.log("📞 [REALTIME-HOOK] Calling onUpdate callback")
-              onUpdateRef.current()
-            }
+          // Small delay to ensure clean state
+          await new Promise(resolve => setTimeout(resolve, 150))
+
+          if (isCleanedUp) {
+            console.log("⚠️ [REALTIME-HOOK] Cleanup occurred during setup, aborting")
+            return
           }
-        )
-        .subscribe((subscriptionStatus, err) => {
-          console.log(`📡 [REALTIME-HOOK] Subscription status changed: ${subscriptionStatus}`)
-          
-          if (err) {
-            console.error("❌ [REALTIME-HOOK] Subscription error:", err)
-          }
-          
-          if (subscriptionStatus === 'SUBSCRIBED') {
-            setStatus('connected')
-            retryCountRef.current = 0 // Reset retry count on success
-            console.log("✅ [REALTIME-HOOK] Successfully subscribed to real-time updates")
+
+          const channelName = `guest-book-realtime-${Date.now()}`
+          console.log(`🔄 [REALTIME-HOOK] Creating new channel: ${channelName}`)
+          setStatus('connecting')
+
+          globalChannel = supabase.channel(channelName, {
+            config: {
+              broadcast: { self: false },
+              presence: { key: '' },
+            },
+          })
+
+          // Set up the postgres_changes listener
+          globalChannel.on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "voceo_guest_book_messages",
+            },
+            (payload) => {
+              console.log("📨 [REALTIME-HOOK] Database change detected:", {
+                event: payload.eventType,
+                table: payload.table,
+                timestamp: new Date().toISOString(),
+              })
+              
+              // Invalidate queries using global query client
+              if (globalQueryClient) {
+                console.log("♻️ [REALTIME-HOOK] Invalidating guestBookMessages query cache")
+                globalQueryClient.invalidateQueries({ queryKey: ["guestBookMessages"] })
+              }
+              
+              // Call all registered callbacks
+              globalCallbacks.forEach(callback => {
+                try {
+                  callback()
+                } catch (err) {
+                  console.error("❌ [REALTIME-HOOK] Error in callback:", err)
+                }
+              })
+            }
+          )
+
+          // Subscribe to the channel
+          globalChannel.subscribe((subscriptionStatus, err) => {
+            console.log(`📡 [REALTIME-HOOK] Subscription status: ${subscriptionStatus}`)
             
-            // Clear any pending retries
-            if (retryTimeoutRef.current) {
-              clearTimeout(retryTimeoutRef.current)
-              retryTimeoutRef.current = null
+            if (err) {
+              console.error("❌ [REALTIME-HOOK] Subscription error:", err)
             }
-          } else if (subscriptionStatus === 'CHANNEL_ERROR') {
-            setStatus('error')
-            console.error("❌ [REALTIME-HOOK] Channel error occurred")
-            attemptRetry()
-          } else if (subscriptionStatus === 'TIMED_OUT') {
-            setStatus('error')
-            console.warn("⏱️ [REALTIME-HOOK] Subscription timed out")
-            attemptRetry()
-          } else if (subscriptionStatus === 'CLOSED') {
-            console.log("🔌 [REALTIME-HOOK] Channel closed")
-            if (!isCleanedUp) {
-              setStatus('disconnected')
+            
+            if (subscriptionStatus === 'SUBSCRIBED') {
+              setStatus('connected')
+              retryCountRef.current = 0
+              console.log("✅ [REALTIME-HOOK] Successfully subscribed to real-time updates")
+              
+              if (retryTimeoutRef.current) {
+                clearTimeout(retryTimeoutRef.current)
+                retryTimeoutRef.current = null
+              }
+            } else if (subscriptionStatus === 'CHANNEL_ERROR') {
+              setStatus('error')
+              console.error("❌ [REALTIME-HOOK] Channel error occurred")
+              globalChannel = null
+              attemptRetry()
+            } else if (subscriptionStatus === 'TIMED_OUT') {
+              setStatus('error')
+              console.warn("⏱️ [REALTIME-HOOK] Subscription timed out")
+              globalChannel = null
+              attemptRetry()
+            } else if (subscriptionStatus === 'CLOSED') {
+              console.log("🔌 [REALTIME-HOOK] Channel closed")
+              globalChannel = null
+              if (!isCleanedUp) {
+                setStatus('disconnected')
+              }
             }
-          }
-        })
+          })
+
+        } finally {
+          isSubscribing = false
+          subscriptionPromise = null
+        }
+      })()
+
+      await subscriptionPromise
     }
 
     const attemptRetry = () => {
@@ -127,7 +204,7 @@ export function useGuestBookRealtime(options: UseGuestBookRealtimeOptions = {}) 
       
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++
-        const delay = 2000 // Quick 2 second retry
+        const delay = 2000
         
         console.log(`🔄 [REALTIME-HOOK] Scheduling retry ${retryCountRef.current}/${maxRetries} in ${delay}ms`)
         
@@ -152,25 +229,42 @@ export function useGuestBookRealtime(options: UseGuestBookRealtimeOptions = {}) 
 
     // Cleanup function
     return () => {
-      console.log("🧹 [REALTIME-HOOK] Cleaning up subscription")
+      console.log(`🧹 [REALTIME-HOOK] Subscriber #${subscriberId} leaving`)
       isCleanedUp = true
+      isSubscribedRef.current = false
+      
+      // Unregister subscriber
+      globalSubscriberCount--
+      console.log(`👥 [REALTIME-HOOK] Remaining subscribers: ${globalSubscriberCount}`)
+      
+      // Remove callback from global set
+      if (onUpdateRef.current) {
+        globalCallbacks.delete(onUpdateRef.current)
+      }
       
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current)
         retryTimeoutRef.current = null
       }
       
-      if (channelRef.current) {
-        // Async cleanup but don't await (cleanup functions can't be async)
-        supabase.removeChannel(channelRef.current).catch(err => {
-          console.log("⚠️ [REALTIME-HOOK] Error during channel cleanup:", err)
-        })
-        channelRef.current = null
+      // Only cleanup global channel if no more subscribers
+      if (globalSubscriberCount === 0) {
+        console.log("🧹 [REALTIME-HOOK] No more subscribers, cleaning up global channel")
+        
+        if (globalChannel) {
+          supabase.removeChannel(globalChannel).catch(err => {
+            console.log("⚠️ [REALTIME-HOOK] Error during channel cleanup:", err)
+          })
+          globalChannel = null
+        }
+        
+        globalCallbacks.clear()
+        globalQueryClient = null
       }
       
       setStatus('disconnected')
     }
-  }, [enabled, queryClient]) // Removed onUpdate from dependencies
+  }, [enabled, queryClient])
 
   return { status }
 }
