@@ -86,8 +86,60 @@ export default function ScannerPageWrapper() {
   // Camera switching for mobile
   const [currentCamera, setCurrentCamera] = useState<"environment" | "user">("environment")
 
+  // Camera device management
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
+  const [selectedCameraDeviceId, setSelectedCameraDeviceId] = useState<string>("")
+
   // Mobile menu state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Helper function to get a friendly camera label
+  const getCameraLabel = useCallback((camera: MediaDeviceInfo, index: number): string => {
+    if (camera.label) {
+      // If the device has a label, use it
+      const label = camera.label.toLowerCase()
+      
+      // Try to identify camera position from label
+      if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
+        return `Back Camera (${camera.label})`
+      } else if (label.includes('front') || label.includes('user') || label.includes('face')) {
+        return `Front Camera (${camera.label})`
+      }
+      
+      // Use the full label if we can't determine position
+      return camera.label
+    }
+    
+    // Fallback: use generic names based on typical camera ordering
+    // Usually, the first camera is back/environment and second is front/user
+    if (index === 0) {
+      return 'Back Camera'
+    } else if (index === 1) {
+      return 'Front Camera'
+    }
+    
+    return `Camera ${index + 1}`
+  }, [])
+
+  // Enumerate available cameras on component mount
+  useEffect(() => {
+    const enumerateCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter(device => device.kind === "videoinput")
+        setAvailableCameras(videoDevices)
+        
+        // Auto-select first camera if none selected
+        if (videoDevices.length > 0 && !selectedCameraDeviceId) {
+          setSelectedCameraDeviceId(videoDevices[0].deviceId)
+        }
+      } catch (error) {
+        console.error("Error enumerating cameras:", error)
+      }
+    }
+
+    enumerateCameras()
+  }, [selectedCameraDeviceId])
 
   // Voice synthesis function - FIXED: More stable state management
   const speakName = useCallback(
@@ -398,6 +450,13 @@ export default function ScannerPageWrapper() {
     setScannerKey((prev) => prev + 1)
   }, [])
 
+  // Camera device change handler
+  const handleCameraDeviceChange = useCallback((deviceId: string) => {
+    setSelectedCameraDeviceId(deviceId)
+    // Increment scanner key to trigger remount with new camera
+    setScannerKey((prev) => prev + 1)
+  }, [])
+
   // Manual scanner refresh - separate from camera switching
   const handleScannerRefresh = useCallback(() => {
     setScannerKey((prev) => prev + 1)
@@ -582,6 +641,10 @@ export default function ScannerPageWrapper() {
                 scannerKey={scannerKey}
                 currentCamera={currentCamera}
                 onCameraSwitch={handleCameraSwitch}
+                availableCameras={availableCameras}
+                selectedCameraDeviceId={selectedCameraDeviceId}
+                onCameraDeviceChange={handleCameraDeviceChange}
+                getCameraLabel={getCameraLabel}
                 searchDialogOpen={searchDialogOpen}
                 onSearchDialogToggle={() => setSearchDialogOpen(!searchDialogOpen)}
                 searchQuery={searchQuery}
@@ -666,6 +729,10 @@ export default function ScannerPageWrapper() {
                   scannerKey={scannerKey}
                   currentCamera={currentCamera}
                   onCameraSwitch={handleCameraSwitch}
+                  availableCameras={availableCameras}
+                  selectedCameraDeviceId={selectedCameraDeviceId}
+                  onCameraDeviceChange={handleCameraDeviceChange}
+                  getCameraLabel={getCameraLabel}
                   searchDialogOpen={searchDialogOpen}
                   onSearchDialogToggle={() => setSearchDialogOpen(!searchDialogOpen)}
                   searchQuery={searchQuery}

@@ -37,6 +37,10 @@ interface ScannerControlsProps {
   scannerKey: number
   currentCamera: "environment" | "user"
   onCameraSwitch: () => void
+  availableCameras: MediaDeviceInfo[]
+  selectedCameraDeviceId: string
+  onCameraDeviceChange: (deviceId: string) => void
+  getCameraLabel: (camera: MediaDeviceInfo, index: number) => string
   searchDialogOpen: boolean
   onSearchDialogToggle: () => void
   searchQuery: string
@@ -70,6 +74,10 @@ export function ScannerControls({
   scannerKey,
   currentCamera,
   onCameraSwitch,
+  availableCameras,
+  selectedCameraDeviceId,
+  onCameraDeviceChange,
+  getCameraLabel,
   searchDialogOpen,
   onSearchDialogToggle,
   searchQuery,
@@ -218,6 +226,7 @@ export function ScannerControls({
                   isActive={scanning}
                   isSpeaking={isSpeaking}
                   onCameraStopped={onStopScanning}
+                  cameraDeviceId={selectedCameraDeviceId}
                 />
               </div>
               {/* Status Messages */}
@@ -263,7 +272,7 @@ export function ScannerControls({
 
         {/* Scanner Controls Bar */}
         <div className={`${config.theme.glass.light} ${config.ui.borderRadius.small} p-4`}>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
               <div
                 className={`w-6 h-6 ${config.theme.primary.gradient} ${config.ui.borderRadius.small} flex items-center justify-center`}
@@ -275,7 +284,26 @@ export function ScannerControls({
               </span>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Camera Device Selector - Desktop only, not when scanning */}
+              {!isMobile && !scanning && availableCameras.length > 1 && (
+                <Select
+                  value={selectedCameraDeviceId}
+                  onValueChange={onCameraDeviceChange}
+                >
+                  <SelectTrigger className={`${config.theme.glass.standard} ${config.theme.text.primary} border-0 text-xs sm:text-sm w-[180px]`}>
+                    <SelectValue placeholder="Select camera" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCameras.map((camera, index) => (
+                      <SelectItem key={camera.deviceId} value={camera.deviceId}>
+                        {getCameraLabel(camera, index)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
               {/* Mobile Controls */}
               {isMobile && (
                 <>

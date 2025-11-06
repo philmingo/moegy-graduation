@@ -37,9 +37,10 @@ interface QrScannerProps {
   isActive?: boolean
   isSpeaking?: boolean
   onCameraStopped?: () => void
+  cameraDeviceId?: string
 }
 
-export function QrScanner({ onScan, onError, className, onScanError, students, isActive = true, isSpeaking = false, onCameraStopped }: QrScannerProps) {
+export function QrScanner({ onScan, onError, className, onScanError, students, isActive = true, isSpeaking = false, onCameraStopped, cameraDeviceId }: QrScannerProps) {
   const scannerContainerId = "qr-reader"
   const isMobile = useIsMobile()
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
@@ -336,8 +337,16 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
     }    // Initialize scanner
     const initializeScanner = async () => {
       try {
-        // Try environment camera first, fallback to user camera
-        let cameraConstraint: any = { facingMode: "environment" }
+        // Use specific camera device ID if provided, otherwise fallback to facingMode
+        let cameraConstraint: any
+        
+        if (cameraDeviceId) {
+          // Use exact device ID when provided
+          cameraConstraint = { deviceId: { exact: cameraDeviceId } }
+        } else {
+          // Fallback to environment camera
+          cameraConstraint = { facingMode: "environment" }
+        }
 
         try {
           await newScannerInstance.start(cameraConstraint, startConfig, qrCodeSuccessCallback, qrCodeErrorCallback)
@@ -350,16 +359,22 @@ export function QrScanner({ onScan, onError, className, onScanError, students, i
             }
           }, 100)
         } catch (envCameraError) {
-          cameraConstraint = { facingMode: "user" }
-          await newScannerInstance.start(cameraConstraint, startConfig, qrCodeSuccessCallback, qrCodeErrorCallback)
-          
-          // Capture MediaStream reference from video element
-          setTimeout(() => {
-            const videoElement = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement
-            if (videoElement && videoElement.srcObject instanceof MediaStream) {
-              mediaStreamRef.current = videoElement.srcObject
-            }
-          }, 100)
+          // Only fallback if we weren't trying a specific device ID
+          if (!cameraDeviceId) {
+            cameraConstraint = { facingMode: "user" }
+            await newScannerInstance.start(cameraConstraint, startConfig, qrCodeSuccessCallback, qrCodeErrorCallback)
+            
+            // Capture MediaStream reference from video element
+            setTimeout(() => {
+              const videoElement = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement
+              if (videoElement && videoElement.srcObject instanceof MediaStream) {
+                mediaStreamRef.current = videoElement.srcObject
+              }
+            }, 100)
+          } else {
+            // Re-throw error if specific device ID failed
+            throw envCameraError
+          }
         }
       } catch (err: any) {
         const errMsg = err instanceof Error ? err.message : String(err)

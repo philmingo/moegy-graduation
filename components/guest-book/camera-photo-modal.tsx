@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Camera, X, RotateCcw, Check } from "lucide-react"
 import { currentTheme } from "@/lib/theme-config"
 import { toast } from "sonner"
@@ -27,6 +28,34 @@ export function CameraPhotoModal({
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const theme = currentTheme
+
+  // Helper function to get a friendly camera label
+  const getCameraLabel = (camera: MediaDeviceInfo, index: number): string => {
+    if (camera.label) {
+      // If the device has a label, use it
+      const label = camera.label.toLowerCase()
+      
+      // Try to identify camera position from label
+      if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
+        return `Back Camera (${camera.label})`
+      } else if (label.includes('front') || label.includes('user') || label.includes('face')) {
+        return `Front Camera (${camera.label})`
+      }
+      
+      // Use the full label if we can't determine position
+      return camera.label
+    }
+    
+    // Fallback: use generic names based on typical camera ordering
+    // Usually, the first camera is back/environment and second is front/user
+    if (index === 0) {
+      return 'Back Camera'
+    } else if (index === 1) {
+      return 'Front Camera'
+    }
+    
+    return `Camera ${index + 1}`
+  }
 
   // Get available cameras when modal opens
   useEffect(() => {
@@ -251,21 +280,25 @@ export function CameraPhotoModal({
                 {/* Camera Selection - Bottom Left */}
                 <div className="flex items-center gap-2 order-2 sm:order-1">
                   {availableCameras.length > 0 && (
-                    <select
+                    <Select
                       value={selectedCamera}
-                      onChange={(e) => {
+                      onValueChange={(value) => {
                         stopCamera()
-                        setSelectedCamera(e.target.value)
+                        setSelectedCamera(value)
                       }}
                       disabled={isCapturing}
-                      className={`px-2 sm:px-3 py-2 rounded-lg ${theme.glass.standard} ${theme.text.primary} border-0 text-xs sm:text-sm cursor-pointer disabled:opacity-50 w-full sm:w-auto`}
                     >
-                      {availableCameras.map((camera, index) => (
-                        <option key={camera.deviceId} value={camera.deviceId}>
-                          {camera.label || `Camera ${index + 1}`}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className={`px-2 sm:px-3 py-2 rounded-lg ${theme.glass.standard} ${theme.text.primary} border-0 text-xs sm:text-sm disabled:opacity-50 w-full sm:w-auto min-w-[180px]`}>
+                        <SelectValue placeholder="Select camera" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCameras.map((camera, index) => (
+                          <SelectItem key={camera.deviceId} value={camera.deviceId}>
+                            {getCameraLabel(camera, index)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 </div>
 
