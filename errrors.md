@@ -1,225 +1,106 @@
- Complete Summary: The Infinite Render Loop Debugging Journey
-The Original Problem
-You reported a "Maximum update depth exceeded" error that made the scanner page unusable. The error was thrown by the Switch component in AppHeader when toggling Auto-Announce.
-
-🔍 Discovery Process: Layer by Layer
-Phase 1: The Toast Red Herring (Phases 55-61)
-What I Found: The toast function was being imported from the WRONG module:
-
-// ❌ WRONG - from UI component
-import { toast } from "@/components/ui/use-toast"
-
-// ✅ CORRECT - from hooks (stable function)
-import { toast } from "@/hooks/use-toast"
-
-
-Was this a real issue?
-YES, but not THE root cause. Here's why it mattered:
-
-The UI component version wasn't memoized properly
-Importing from the wrong place meant toast was being recreated on every render
-Having toast in callback dependency arrays caused those callbacks to recreate
-This contributed to the cascade of rerenders
-Fix Applied:
-
-Changed all imports to use @/hooks/use-toast
-Removed toast from all dependency arrays (it's stable now)
-Result: Helped, but didn't fully solve the problem.
-
-Phase 2: Missing Memoization (Phases 70-72)
-What I Found: AppHeader wasn't wrapped in React.memo(), so it was rerendering every time its parent rerendered, even when props hadn't changed.
-
-The Fix:
-
-function AppHeader({ ...props }) {
-  // component code
-}
-
-export default React.memo(AppHeader)
-
-
-Why This Mattered:
-
-The Switch component that was throwing the error is INSIDE AppHeader
-Every time AppHeader rerenders, Switch rerenders
-If AppHeader rerenders infinitely, Switch throws "Maximum update depth exceeded"
-React.memo() breaks the rerender chain by preventing AppHeader from rerendering unless its props actually change
-Was this the right approach?
-YES! This was a crucial fix. Memoizing components that don't need to rerender on every parent render is a React best practice.
-
-Result: Page started loading sometimes, but still had intermittent issues.
-
-Phase 3: React Query Refetching (Phases 73-75)
-What I Found: React Query was potentially refetching data unnecessarily, triggering additional rerenders.
-
-The Fix:
-
-const result = useQuery({
-  queryKey: STUDENTS_QUERY_KEY,
-  queryFn: async () => { /* ... */ },
-  refetchOnMount: false,        // Added
-  refetchOnWindowFocus: false,  // Added
-  refetchOnReconnect: false,    // Added
-})
-
-Why This Mattered:
-
-React Query refetches can trigger component rerenders
-Combined with other issues, this added fuel to the fire
-Not THE root cause, but a contributing factor
-Result: Further improvement, but errors still appeared after multiple refreshes.
-
-Phase 4: The TRUE ROOT CAUSE - useIsMobile Hook (Phases 77-80)
-What I Found: The useIsMobile hook was calling setState in its effect on EVERY mount:
-
-// ❌ THE BUG - This was the smoking gun
-React.useEffect(() => {
-  const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-  const onChange = () => { /* ... */ }
-  mql.addEventListener("change", onChange)
-  
-  // THIS WAS THE PROBLEM - setting state on every effect run
-  const currentIsMobile = window.innerWidth < MOBILE_BREAKPOINT
-  setIsMobile(prev => prev !== currentIsMobile ? currentIsMobile : prev)
-  
-  return () => mql.removeEventListener("change", onChange)
-}, [])
-
-
-Why This Was The Root Cause:
-
-React 18 Strict Mode runs effects TWICE on mount (intentionally, to catch bugs)
-Even with the functional update checking if the value changed, calling setState in an effect can trigger renders
-The state was already correctly initialized: useState(() => window.innerWidth < MOBILE_BREAKPOINT)
-The effect was redundantly setting state that was already correct
-Combined with Strict Mode's double invocation + other render triggers = infinite loop
-The Fix:
-
-
-// ✅ FIXED - No setState in effect body
-React.useEffect(() => {
-  const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-  const onChange = () => {
-    const newIsMobile = window.innerWidth < MOBILE_BREAKPOINT
-    setIsMobile(prev => prev !== newIsMobile ? newIsMobile : prev)
-  }
-  mql.addEventListener("change", onChange)
-  
-  // No setState call - state already initialized correctly
-  return () => mql.removeEventListener("change", onChange)
-}, [])
-
-
-Why This Fixed Everything:
-
-State initialization in useState(() => ...) already sets the correct initial value
-Effect only needs to listen for CHANGES, not set initial state
-Removed the trigger that was causing the cascade
-Result: ✅ Page loads consistently, no more infinite loops!
-
-Phase 5: The SECOND Issue - scanner-controls.tsx (Today)
-What I Found: After fixing the main issue, a NEW infinite loop appeared from scanner-controls.tsx line 156:
-
-// ❌ THE SECOND BUG
-useEffect(() => {
-  onSearchResultsChange(filteredStudents)
-}, [filteredStudents, onSearchResultsChange])
-
-Why This Caused Problems:
-
-filteredStudents is a useMemo that recalculates when dependencies change
-onSearchResultsChange was setSearchResults (a setState function from parent)
-Having onSearchResultsChange in dependencies is risky - even though setState should be stable, React can recreate it in certain situations
-This created a sync loop: filteredStudents changes → effect runs → setState called → parent rerenders → props change → effect runs again
-The Fix:
-
-Removed the entire useEffect - it was unnecessary!
-Removed searchResults state from parent component
-Use filteredStudents directly - it's already computed via useMemo
-Why This Was Better Architecture:
-
-No state syncing needed
-Child component owns the filtering logic
-Parent doesn't need to track filtered results
-Cleaner, more maintainable code
-📊 The Complete Picture
-The Toast Issue: Real or Not?
-Answer: REAL, but not the root cause.
-
-Think of it like this:
-
-The useIsMobile bug was the gasoline - it would eventually explode on its own.
-
-The toast issue was the matches - it made things catch fire faster.
-
-The missing memoization was the kindling - it let the fire spread to the Switch component.
-
-All of them together created the perfect storm. Fixing just one wouldn't have been enough - they were all contributing factors.
-
-✅ Final Fixes Applied
-1. Toast Function Stability
-✅ Import from @/hooks/use-toast (stable module-level function)
-✅ Remove from dependency arrays
-2. React.memo() on AppHeader
-✅ Prevents unnecessary rerenders
-✅ Breaks the rerender chain to Switch component
-3. React Query Guards
-✅ refetchOnMount: false
-✅ refetchOnWindowFocus: false
-✅ refetchOnReconnect: false
-4. useIsMobile Hook Fix (ROOT CAUSE)
-✅ Removed setState from effect body
-✅ Let useState initialization handle initial value
-5. scanner-controls.tsx Fix (SECOND ISSUE)
-✅ Removed unnecessary useEffect syncing
-✅ Removed searchResults state
-✅ Use filteredStudents directly
-
-
-
-🎓 Lessons Learned
-1. Never call setState in useEffect if the value is already initialized
-
-// ❌ BAD
-useState(initialValue)
-useEffect(() => {
-  setState(initialValue) // Redundant!
-}, [])
-
-// ✅ GOOD
-useState(() => computeInitialValue()) // Computed once
-useEffect(() => {
-  // Only listen for changes
-}, [])
-
-
-
-2. Memoize components that don't need to rerender
-export default React.memo(ExpensiveComponent)
-
-3. Import from the right source
-Toast from @/hooks/use-toast (stable) ✅
-Not from @/components/ui/use-toast (unstable) ❌
-4. Don't sync computed values to state
-Use useMemo and render directly ✅
-Don't useEffect to copy to state ❌
-5. React 18 Strict Mode is your friend
-It double-invokes effects to catch bugs like this
-If your code breaks in Strict Mode, it has a bug
-🎯 Conclusion
-Was it right to assume the issue was with toast?
-
-Partially right - toast WAS an issue, just not THE issue
-Toast was a contributing factor that accelerated the problem
-The real issue was setState in useIsMobile effect
-But fixing toast alone wouldn't have solved it
-Think of debugging like peeling an onion:
-
-Outer layer: Toast instability (made things worse)
-Middle layer: Missing memoization (let errors propagate)
-Inner layer: React Query refetching (added strain)
-Core: useIsMobile setState (root cause)
-Second core: scanner-controls useEffect (second root cause)
-You needed to fix ALL the layers to completely solve the problem. Each fix got you closer, but only fixing the core issues eliminated the errors entirely.
-
-The intermittent nature ("works after multiple refreshes") was the key clue that it was a timing/race condition issue, which pointed to React 18 Strict Mode + setState in effects - exactly what we found! 🎉
+▶️ [CAROUSEL] Resuming autoplay after manual interaction
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 6, displayed count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 6, displayed count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:191 ▶️ [CAROUSEL] Starting autoplay
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:85 ✨ [GUEST-BOOK-PAGE] handleMessageCreated - New message created
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:86 📊 [GUEST-BOOK-PAGE] Current messages before refetch: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:90 ♻️ [GUEST-BOOK-PAGE] Query cache invalidated
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:34 🎨 [GUEST-BOOK-PAGE] Component rendering
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:44 📡 [GUEST-BOOK-PAGE] Real-time status: connecting
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:61 � [GUEST-BOOK-PAGE] Current messages count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:34 🎨 [GUEST-BOOK-PAGE] Component rendering
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:44 📡 [GUEST-BOOK-PAGE] Real-time status: connecting
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:61 � [GUEST-BOOK-PAGE] Current messages count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 6, displayed count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 6, displayed count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:141 🧹 [REALTIME-HOOK] Cleaning up subscription
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:83 📡 [REALTIME-HOOK] Subscription status changed: CLOSED
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:104 🔌 [REALTIME-HOOK] Channel closed
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:136 🚀 [REALTIME-HOOK] Initializing real-time subscription
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:47 🔄 [REALTIME-HOOK] Setting up subscription with channel: guest-book-realtime-1762400828658
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:34 🎨 [GUEST-BOOK-PAGE] Component rendering
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:44 📡 [GUEST-BOOK-PAGE] Real-time status: connecting
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:61 � [GUEST-BOOK-PAGE] Current messages count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:34 🎨 [GUEST-BOOK-PAGE] Component rendering
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:44 📡 [GUEST-BOOK-PAGE] Real-time status: connecting
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:61 � [GUEST-BOOK-PAGE] Current messages count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:150  WebSocket connection to 'wss://qetjvxqiygghrhochoke.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFldGp2eHFpeWdnaHJob2Nob2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIxNTk1NjYsImV4cCI6MjA1NzczNTU2Nn0.tMYBTbZMfDbNalVJYzkE3N8IIKF1-z9vrgcHV4KZt9c&vsn=1.0.0' failed: WebSocket is closed before the connection is established.
+disconnect @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\@supabase\realtime-js\dist\module\RealtimeClient.js:181
+removeChannel @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\@supabase\realtime-js\dist\module\RealtimeClient.js:204
+await in removeChannel
+removeChannel @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\@supabase\supabase-js\dist\module\SupabaseClient.js:168
+useGuestBookRealtime.useEffect @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:150
+react_stack_bottom_frame @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:23680
+runWithFiberInDEV @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:871
+commitHookEffectListUnmount @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:12435
+commitHookPassiveUnmountEffects @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:12476
+commitPassiveUnmountOnFiber @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:14748
+recursivelyTraversePassiveUnmountEffects @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)
+flushPassiveEffects @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16334
+flushPendingEffects @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16298
+flushSpawnedWork @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16264
+commitRoot @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:15997
+commitRootWhenReady @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:15227
+performWorkOnRoot @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:15146
+performSyncWorkOnRoot @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16830
+flushSyncWorkAcrossRoots_impl @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16676
+processRootScheduleInMicrotask @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16714
+eval @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16849
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:94 📊 [GUEST-BOOK-PAGE] After refetch: 7 messages
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:97 ✅ [GUEST-BOOK-PAGE] Message creation flow complete
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:34 🎨 [GUEST-BOOK-PAGE] Component rendering
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:44 📡 [GUEST-BOOK-PAGE] Real-time status: connecting
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:61 � [GUEST-BOOK-PAGE] Current messages count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:34 🎨 [GUEST-BOOK-PAGE] Component rendering
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:44 📡 [GUEST-BOOK-PAGE] Real-time status: connecting
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:61 � [GUEST-BOOK-PAGE] Current messages count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 6
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:141 🧹 [REALTIME-HOOK] Cleaning up subscription
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:83 📡 [REALTIME-HOOK] Subscription status changed: CLOSED
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:104 🔌 [REALTIME-HOOK] Channel closed
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:77 🔢 [CAROUSEL] Messages array changed. Length: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:110 🔄 [CAROUSEL] New message detected, count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:136 🚀 [REALTIME-HOOK] Initializing real-time subscription
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:47 🔄 [REALTIME-HOOK] Setting up subscription with channel: guest-book-realtime-1762400829523
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:150  WebSocket connection to 'wss://qetjvxqiygghrhochoke.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFldGp2eHFpeWdnaHJob2Nob2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIxNTk1NjYsImV4cCI6MjA1NzczNTU2Nn0.tMYBTbZMfDbNalVJYzkE3N8IIKF1-z9vrgcHV4KZt9c&vsn=1.0.0' failed: WebSocket is closed before the connection is established.
+disconnect @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\@supabase\realtime-js\dist\module\RealtimeClient.js:181
+removeChannel @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\@supabase\realtime-js\dist\module\RealtimeClient.js:204
+await in removeChannel
+removeChannel @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\@supabase\supabase-js\dist\module\SupabaseClient.js:168
+useGuestBookRealtime.useEffect @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\hooks\use-guest-book-realtime.ts:150
+react_stack_bottom_frame @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:23680
+runWithFiberInDEV @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:871
+commitHookEffectListUnmount @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:12435
+commitHookPassiveUnmountEffects @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:12476
+commitPassiveUnmountOnFiber @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:14748
+recursivelyTraversePassiveUnmountEffects @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)
+flushPassiveEffects @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16334
+flushPendingEffects @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16298
+flushSpawnedWork @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16264
+commitRoot @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:15997
+commitRootWhenReady @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:15227
+performWorkOnRoot @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:15146
+performSyncWorkOnRoot @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16830
+flushSyncWorkAcrossRoots_impl @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16676
+processRootScheduleInMicrotask @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16714
+eval @ C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\node_modules\next\dist\compiled\react-dom\cjs\react-dom-client.development.js:16849
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:34 🎨 [GUEST-BOOK-PAGE] Component rendering
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:44 📡 [GUEST-BOOK-PAGE] Real-time status: connecting
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:61 � [GUEST-BOOK-PAGE] Current messages count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:34 🎨 [GUEST-BOOK-PAGE] Component rendering
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:44 📡 [GUEST-BOOK-PAGE] Real-time status: connecting
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\app\admin\guest-book\page.tsx:61 � [GUEST-BOOK-PAGE] Current messages count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:84 🔢 [CAROUSEL] Carousel API reports 7 slides (messages.length = 7)
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:87 ✅ [CAROUSEL] Updating count display from 6 to 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:126 👆 [CAROUSEL] Manual interaction detected, pausing autoplay for 10 seconds
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:126 👆 [CAROUSEL] Manual interaction detected, pausing autoplay for 10 seconds
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 7
+C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:40 🎠 [CAROUSEL] Component render - messages.length: 7, displayed count: 7
+399C:\Users\XpJayy\Documents\Code\Project\Voceo\Voceo (Graduation Announcement App)\components\guest-book\guest-book-carousel.tsx:126 👆 [CAROUSEL] Manual interaction detected, pausing autoplay for 10 seconds

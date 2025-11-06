@@ -1,18 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useState, useEffect, useCallback } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { getStudents } from "@/lib/actions/students"
 import { getGuestBookMessages, deleteGuestBookMessage, deleteAllGuestBookMessages } from "@/lib/actions/guest-book"
 import { GuestBookCarousel } from "@/components/guest-book/guest-book-carousel"
 import { GuestBookMessageCreator } from "@/components/guest-book/guest-book-message-creator"
+import { useGuestBookRealtime } from "@/hooks/use-guest-book-realtime"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
 import { currentTheme } from "@/lib/theme-config"
 import { PlusCircle, Trash2, AlertTriangle, Eye, Settings } from "lucide-react"
-import { createClient } from "@/lib/supabase"
 import AppHeader from "@/components/app-header"
 import { AnimatedBackground } from "@/components/animated-background"
 import { useToast } from "@/hooks/use-toast"
@@ -29,6 +29,23 @@ export default function GuestBookPage() {
   const messagesPerPage = 9
   const { toast } = useToast()
   const theme = currentTheme
+  const queryClient = useQueryClient()
+
+  console.log("🎨 [GUEST-BOOK-PAGE] Component rendering")
+
+  // Memoize the callback to prevent re-creating on every render
+  const handleRealtimeUpdate = useCallback(() => {
+    console.log("🔔 [GUEST-BOOK-PAGE] Real-time update callback triggered")
+  }, [])
+
+  // Set up real-time subscription using custom hook with memoized callback
+  const { status: realtimeStatus } = useGuestBookRealtime({
+    enabled: true,
+    onUpdate: handleRealtimeUpdate,
+  })
+
+  console.log(`📡 [GUEST-BOOK-PAGE] Real-time status: ${realtimeStatus}`)
+
 
   // Fetch students for QR scanning
   const { data: students = [] } = useQuery({
@@ -41,49 +58,71 @@ export default function GuestBookPage() {
   const { data: messages = [], refetch: refetchMessages } = useQuery({
     queryKey: ["guestBookMessages"],
     queryFn: getGuestBookMessages,
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 0, // Always consider data stale for immediate updates
+    refetchOnWindowFocus: true, // Refetch when window regains focus
   })
 
-  // Set up real-time subscription for new messages
+  console.log(`� [GUEST-BOOK-PAGE] Current messages count: ${messages.length}`)
+
+  // Dynamic polling fallback when real-time fails
   useEffect(() => {
-    const supabase = createClient()
+    console.log(`� [GUEST-BOOK-PAGE] Polling effect triggered. Status: ${realtimeStatus}`)
+    
+    if (realtimeStatus === 'error' || realtimeStatus === 'disconnected') {
+      console.log("⚡ [GUEST-BOOK-PAGE] Real-time unavailable, starting polling (10s interval)")
+      
+      const pollInterval = setInterval(() => {
+        console.log("🔃 [GUEST-BOOK-PAGE] Polling for updates...")
+        refetchMessages()
+      }, 10000)
 
-    const channel = supabase
-      .channel("guest-book-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "voceo_guest_book_messages",
-        },
-        () => {
-          refetchMessages()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
+      return () => {
+        console.log("� [GUEST-BOOK-PAGE] Stopping polling")
+        clearInterval(pollInterval)
+      }
+    } else {
+      console.log("✓ [GUEST-BOOK-PAGE] Real-time active, no polling needed")
     }
-  }, [refetchMessages])
+  }, [realtimeStatus, refetchMessages])
 
-  const handleMessageCreated = () => {
-    refetchMessages()
+  const handleMessageCreated = async () => {
+    console.log("✨ [GUEST-BOOK-PAGE] handleMessageCreated - New message created")
+    console.log(`📊 [GUEST-BOOK-PAGE] Current messages before refetch: ${messages.length}`)
+    
+    // Optimistically invalidate to trigger immediate refetch
+    queryClient.invalidateQueries({ queryKey: ["guestBookMessages"] })
+    console.log("♻️ [GUEST-BOOK-PAGE] Query cache invalidated")
+    
+    // Force refetch to bypass any caching issues
+    const result = await refetchMessages()
+    console.log(`📊 [GUEST-BOOK-PAGE] After refetch: ${result.data?.length || 0} messages`)
+    
     setIsCreatorOpen(false)
+    console.log("✅ [GUEST-BOOK-PAGE] Message creation flow complete")
   }
 
   const handleDeleteMessage = async () => {
     if (!selectedMessageId) return
 
+    console.log(`🗑️ [GUEST-BOOK-PAGE] handleDeleteMessage - Deleting message: ${selectedMessageId}`)
+    console.log(`📊 [GUEST-BOOK-PAGE] Current messages before delete: ${messages.length}`)
+
     try {
       await deleteGuestBookMessage(selectedMessageId)
+      console.log("✅ [GUEST-BOOK-PAGE] Message deleted from database")
+      
       toast({
         title: "Success",
         description: "Message deleted successfully",
       })
-      refetchMessages()
+      
+      queryClient.invalidateQueries({ queryKey: ["guestBookMessages"] })
+      console.log("♻️ [GUEST-BOOK-PAGE] Query cache invalidated")
+      
+      const result = await refetchMessages()
+      console.log(`📊 [GUEST-BOOK-PAGE] After refetch: ${result.data?.length || 0} messages`)
     } catch (error) {
+      console.error("❌ [GUEST-BOOK-PAGE] Delete error:", error)
       toast({
         title: "Error",
         description: "Failed to delete message",
@@ -92,18 +131,30 @@ export default function GuestBookPage() {
     } finally {
       setDeleteDialogOpen(false)
       setSelectedMessageId(null)
+      console.log("✅ [GUEST-BOOK-PAGE] Delete flow complete")
     }
   }
 
   const handleDeleteAll = async () => {
+    console.log("🗑️ [GUEST-BOOK-PAGE] handleDeleteAll - Deleting all messages")
+    console.log(`📊 [GUEST-BOOK-PAGE] Current messages count: ${messages.length}`)
+    
     try {
       await deleteAllGuestBookMessages()
+      console.log("✅ [GUEST-BOOK-PAGE] All messages deleted from database")
+      
       toast({
         title: "Success",
         description: "All messages deleted successfully",
       })
-      refetchMessages()
+      
+      queryClient.invalidateQueries({ queryKey: ["guestBookMessages"] })
+      console.log("♻️ [GUEST-BOOK-PAGE] Query cache invalidated")
+      
+      const result = await refetchMessages()
+      console.log(`📊 [GUEST-BOOK-PAGE] After refetch: ${result.data?.length || 0} messages`)
     } catch (error) {
+      console.error("❌ [GUEST-BOOK-PAGE] Delete all error:", error)
       toast({
         title: "Error",
         description: "Failed to delete all messages",
@@ -111,6 +162,7 @@ export default function GuestBookPage() {
       })
     } finally {
       setDeleteAllDialogOpen(false)
+      console.log("✅ [GUEST-BOOK-PAGE] Delete all flow complete")
     }
   }
 

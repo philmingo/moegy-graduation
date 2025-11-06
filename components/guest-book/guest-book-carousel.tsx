@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { type GuestBookMessage } from "@/lib/actions/guest-book"
 import { MessageCard } from "./message-card"
 import {
@@ -32,8 +32,24 @@ export function GuestBookCarousel({
   const [current, setCurrent] = useState(0)
   const [count, setCount] = useState(0)
   const [isHovered, setIsHovered] = useState(false)
+  const [isManuallyInteracting, setIsManuallyInteracting] = useState(false)
   const autoplayRef = useRef<NodeJS.Timeout | null>(null)
+  const manualInteractionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const theme = currentTheme
+
+  console.log(`🎠 [CAROUSEL] Component render - messages.length: ${messages.length}, displayed count: ${count}`)
+
+  // Clear all timers on unmount
+  useEffect(() => {
+    return () => {
+      if (autoplayRef.current) {
+        clearInterval(autoplayRef.current)
+      }
+      if (manualInteractionTimeoutRef.current) {
+        clearTimeout(manualInteractionTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!api) {
@@ -43,17 +59,114 @@ export function GuestBookCarousel({
     setCount(api.scrollSnapList().length)
     setCurrent(api.selectedScrollSnap() + 1)
 
-    api.on("select", () => {
+    const handleSelect = () => {
       setCurrent(api.selectedScrollSnap() + 1)
-    })
+    }
+
+    api.on("select", handleSelect)
+
+    return () => {
+      api.off("select", handleSelect)
+    }
   }, [api])
 
-  // Jump to first slide when messages change (new message added)
+  // Update count when messages change - use messages.length directly
   useEffect(() => {
-    if (api && messages.length > 0) {
-      api.scrollTo(0)
+    if (!api) return
+    
+    console.log(`🔢 [CAROUSEL] Messages array changed. Length: ${messages.length}`)
+    
+    // Force carousel to reinitialize after DOM updates
+    requestAnimationFrame(() => {
+      if (!api) return
+      
+      const newCount = api.scrollSnapList().length
+      console.log(`🔢 [CAROUSEL] Carousel API reports ${newCount} slides (messages.length = ${messages.length})`)
+      
+      if (newCount !== count) {
+        console.log(`✅ [CAROUSEL] Updating count display from ${count} to ${newCount}`)
+        setCount(newCount)
+      } else if (newCount !== messages.length) {
+        // API hasn't caught up with React yet, try again after a short delay
+        console.warn(`⚠️ [CAROUSEL] API count (${newCount}) doesn't match messages (${messages.length}), retrying...`)
+        setTimeout(() => {
+          const retryCount = api.scrollSnapList().length
+          console.log(`🔁 [CAROUSEL] Retry: API now reports ${retryCount} slides`)
+          if (retryCount !== count) {
+            console.log(`✅ [CAROUSEL] Updating count after retry: ${count} → ${retryCount}`)
+            setCount(retryCount)
+          }
+        }, 200)
+      } else {
+        console.log(`✓ [CAROUSEL] Count already correct: ${count}`)
+      }
+    })
+  }, [api, messages.length]) // Remove 'count' from dependencies to avoid cycles
+
+  // Track message count and jump to first slide when NEW messages arrive
+  const previousMessageCountRef = useRef(messages.length)
+  useEffect(() => {
+    if (api && messages.length > 0 && messages.length > previousMessageCountRef.current) {
+      console.log("🔄 [CAROUSEL] New message detected, count:", messages.length)
+      // Wait for React to finish rendering the new messages before scrolling
+      // Use requestAnimationFrame for better timing with render cycle
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (api) {
+            api.scrollTo(0, false)
+          }
+        }, 150) // Slightly longer delay to ensure data is rendered
+      })
     }
+    previousMessageCountRef.current = messages.length
   }, [messages.length, api])
+
+  // Handle manual interaction - pause autoplay for 10 seconds
+  const handleManualInteraction = useCallback(() => {
+    console.log("👆 [CAROUSEL] Manual interaction detected, pausing autoplay for 10 seconds")
+    setIsManuallyInteracting(true)
+
+    // Clear existing timeout
+    if (manualInteractionTimeoutRef.current) {
+      clearTimeout(manualInteractionTimeoutRef.current)
+    }
+
+    // Resume autoplay after 10 seconds
+    manualInteractionTimeoutRef.current = setTimeout(() => {
+      console.log("▶️ [CAROUSEL] Resuming autoplay after manual interaction")
+      setIsManuallyInteracting(false)
+    }, 10000)
+  }, [])
+
+  // Listen to carousel API events for manual navigation
+  useEffect(() => {
+    if (!api) return
+
+    let isUserInitiated = false
+
+    // Detect when user clicks prev/next buttons or uses pointer
+    const handlePointerDown = () => {
+      isUserInitiated = true
+    }
+
+    const handleSelect = () => {
+      // Only trigger if this was a user-initiated interaction
+      if (isUserInitiated) {
+        console.log("👆 [CAROUSEL] Manual interaction detected, pausing autoplay for 10 seconds")
+        handleManualInteraction()
+        isUserInitiated = false
+      }
+    }
+
+    // Listen for pointer down (clicks/touches on carousel)
+    api.on("pointerDown", handlePointerDown)
+    api.on("select", handleSelect)
+
+    return () => {
+      api.off("pointerDown", handlePointerDown)
+      api.off("select", handleSelect)
+    }
+  }, [api, handleManualInteraction])
 
   // Escape key handler for fullscreen
   useEffect(() => {
@@ -74,17 +187,32 @@ export function GuestBookCarousel({
     }
   }, [isFullscreen, onToggleFullscreen])
 
-  // Auto-play functionality
+  // Auto-play functionality with proper loop restart
   useEffect(() => {
-    // In fullscreen mode, always autoplay regardless of hover
-    // In normal mode, pause on hover
-    if (!api || (!isFullscreen && isHovered)) {
+    // Don't autoplay if:
+    // 1. No API
+    // 2. User is manually interacting (within 10 seconds of manual action)
+    // 3. User is hovering (in normal mode only)
+    if (!api || isManuallyInteracting || (!isFullscreen && isHovered)) {
+      // Clear autoplay if it's running
+      if (autoplayRef.current) {
+        clearInterval(autoplayRef.current)
+        autoplayRef.current = null
+      }
       return
     }
 
+    console.log("▶️ [CAROUSEL] Starting autoplay")
+
     const startAutoplay = () => {
       autoplayRef.current = setInterval(() => {
-        api.scrollNext()
+        if (!api.canScrollNext()) {
+          // At the end, restart from beginning
+          console.log("🔄 [CAROUSEL] Reached end, restarting from beginning")
+          api.scrollTo(0)
+        } else {
+          api.scrollNext()
+        }
       }, autoPlayInterval)
     }
 
@@ -93,9 +221,10 @@ export function GuestBookCarousel({
     return () => {
       if (autoplayRef.current) {
         clearInterval(autoplayRef.current)
+        autoplayRef.current = null
       }
     }
-  }, [api, autoPlayInterval, isHovered, isFullscreen])
+  }, [api, autoPlayInterval, isHovered, isFullscreen, isManuallyInteracting])
 
   if (messages.length === 0) {
     return (
@@ -138,17 +267,28 @@ export function GuestBookCarousel({
               </CarouselItem>
             ))}
           </CarouselContent>
-          <CarouselPrevious className={`${theme.glass.standard} ${isFullscreen ? 'left-2' : 'left-2 sm:-left-12'}`} />
-          <CarouselNext className={`${theme.glass.standard} ${isFullscreen ? 'right-2' : 'right-2 sm:-right-12'}`} />
+          <CarouselPrevious 
+            className={`${theme.glass.standard} ${isFullscreen ? 'left-2' : 'left-2 sm:-left-12'}`}
+          />
+          <CarouselNext 
+            className={`${theme.glass.standard} ${isFullscreen ? 'right-2' : 'right-2 sm:-right-12'}`}
+          />
         </Carousel>
         </div>
       </div>
 
       {/* Controls below the card */}
       <div className={`w-full max-w-7xl flex items-center justify-between ${isFullscreen ? 'mt-6 sm:mt-8' : 'mt-4 sm:mt-6'} transition-all duration-300`}>
-        <span className={`${isFullscreen ? 'text-base sm:text-lg' : 'text-sm'} ${theme.text.muted}`}>
-          {current} / {count}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className={`${isFullscreen ? 'text-base sm:text-lg' : 'text-sm'} ${theme.text.muted}`}>
+            {current} / {count}
+          </span>
+          {isManuallyInteracting && (
+            <span className={`${isFullscreen ? 'text-xs sm:text-sm' : 'text-xs'} ${theme.text.muted} opacity-70`}>
+              (Auto-play paused)
+            </span>
+          )}
+        </div>
 
         {onToggleFullscreen && (
           <Button

@@ -18,7 +18,14 @@ export function createClient() {
 
   // Browser-side: reuse the singleton instance
   if (!browserClient) {
-    browserClient = createSupabaseClient(supabaseUrl, supabaseAnonKey)
+    browserClient = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+        timeout: 30000, // 30 seconds timeout for Real-Time connections
+      },
+    })
   }
 
   return browserClient
