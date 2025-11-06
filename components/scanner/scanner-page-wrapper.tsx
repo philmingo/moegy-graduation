@@ -63,7 +63,9 @@ export default function ScannerPageWrapper() {
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
   const [speechRate, setSpeechRate] = useState(0.9)
   const [speechPitch, setSpeechPitch] = useState(1.0)
+  const [announcementDelay, setAnnouncementDelay] = useState(0)
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [delayCountdown, setDelayCountdown] = useState(0)
 
   // Auto-announce toggle - using custom hook for clean state management
   const autoAnnounceControl = useAutoAnnounce()
@@ -165,7 +167,32 @@ export default function ScannerPageWrapper() {
           // Ignore cancellation errors
         }
 
-        // Reduced timeout to minimize state timing issues
+        // Use configurable delay for new announcements, minimal delay for previous list
+        const delayTime = isFromPreviousList ? 50 : (announcementDelay * 1000)
+        
+        // Set initial countdown (in seconds, rounded up)
+        if (!isFromPreviousList && announcementDelay > 0) {
+          setDelayCountdown(Math.ceil(announcementDelay))
+          
+          // Start countdown interval
+          const countdownInterval = setInterval(() => {
+            setDelayCountdown((prev) => {
+              const newCount = prev - 1
+              if (newCount <= 0) {
+                clearInterval(countdownInterval)
+                return 0
+              }
+              return newCount
+            })
+          }, 1000)
+          
+          // Clear interval when component unmounts or announcement starts
+          setTimeout(() => {
+            clearInterval(countdownInterval)
+            setDelayCountdown(0)
+          }, delayTime)
+        }
+        
         setTimeout(() => {
           try {
             // Use provided student info or fall back to current state
@@ -237,7 +264,7 @@ export default function ScannerPageWrapper() {
               variant: "destructive",
             })
           }
-        }, 50) // Reduced from 100ms to 50ms
+        }, delayTime) // Use calculated delay time
       } else {
         setAlertTitle("Speech Synthesis Not Supported")
         setAlertDescription("Your browser does not support text-to-speech functionality.")
@@ -250,6 +277,7 @@ export default function ScannerPageWrapper() {
       selectedVoice,
       speechRate,
       speechPitch,
+      announcementDelay,
       scannedName,
       phoneticSpelling,
       programme,
@@ -335,6 +363,7 @@ export default function ScannerPageWrapper() {
         const savedVoice = localStorage.getItem("selectedVoice")
         const savedRate = localStorage.getItem("speechRate")
         const savedPitch = localStorage.getItem("speechPitch")
+        const savedDelay = localStorage.getItem("announcementDelay")
 
         if (savedVoice && filteredVoices.find((v) => v.name === savedVoice)) {
           setSelectedVoice(savedVoice)
@@ -354,6 +383,12 @@ export default function ScannerPageWrapper() {
           const pitch = Number.parseFloat(savedPitch)
           if (!isNaN(pitch) && pitch >= 0.1 && pitch >= 2.0) {
             setSpeechPitch(pitch)
+          }
+        }
+        if (savedDelay) {
+          const delay = Number.parseFloat(savedDelay)
+          if (!isNaN(delay) && delay >= 0 && delay <= 10) {
+            setAnnouncementDelay(delay)
           }
         }
       }
@@ -684,12 +719,16 @@ export default function ScannerPageWrapper() {
                 onSpeechRateChange={setSpeechRate}
                 speechPitch={speechPitch}
                 onSpeechPitchChange={setSpeechPitch}
+                announcementDelay={announcementDelay}
+                onAnnouncementDelayChange={setAnnouncementDelay}
                 isSpeaking={isSpeaking}
+                delayCountdown={delayCountdown}
                 onTestVoice={(text) => speakName(text, true)}
                 onSaveVoiceSettings={() => {
                   localStorage.setItem("selectedVoice", selectedVoice)
                   localStorage.setItem("speechRate", speechRate.toString())
                   localStorage.setItem("speechPitch", speechPitch.toString())
+                  localStorage.setItem("announcementDelay", announcementDelay.toString())
                   setSettingsDialogOpen(false)
                   toast({ title: "Settings Saved", description: "Voice settings have been saved successfully." })
                 }}
@@ -707,6 +746,7 @@ export default function ScannerPageWrapper() {
                 scanResult={scanResult}
                 onAnnounce={() => speakName(phoneticSpelling || scannedName, false)}
                 isSpeaking={isSpeaking}
+                delayCountdown={delayCountdown}
                 previousScans={previousScans}
                 onAnnouncePrevious={(graduate) => {
                   speakName(graduate.phonetic || graduate.name, true)
@@ -772,12 +812,16 @@ export default function ScannerPageWrapper() {
                   onSpeechRateChange={setSpeechRate}
                   speechPitch={speechPitch}
                   onSpeechPitchChange={setSpeechPitch}
+                  announcementDelay={announcementDelay}
+                  onAnnouncementDelayChange={setAnnouncementDelay}
                   isSpeaking={isSpeaking}
+                  delayCountdown={delayCountdown}
                   onTestVoice={(text) => speakName(text, true)}
                   onSaveVoiceSettings={() => {
                     localStorage.setItem("selectedVoice", selectedVoice)
                     localStorage.setItem("speechRate", speechRate.toString())
                     localStorage.setItem("speechPitch", speechPitch.toString())
+                    localStorage.setItem("announcementDelay", announcementDelay.toString())
                     setSettingsDialogOpen(false)
                     toast({ title: "Settings Saved", description: "Voice settings have been saved successfully." })
                   }}
@@ -797,6 +841,7 @@ export default function ScannerPageWrapper() {
                   scanResult={scanResult}
                   onAnnounce={() => speakName(phoneticSpelling || scannedName, false)}
                   isSpeaking={isSpeaking}
+                  delayCountdown={delayCountdown}
                   previousScans={previousScans}
                   onAnnouncePrevious={(graduate) => {
                     speakName(graduate.phonetic || graduate.name, true)

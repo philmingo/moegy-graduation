@@ -56,7 +56,10 @@ interface ScannerControlsProps {
   onSpeechRateChange: (rate: number) => void
   speechPitch: number
   onSpeechPitchChange: (pitch: number) => void
+  announcementDelay: number
+  onAnnouncementDelayChange: (delay: number) => void
   isSpeaking: boolean
+  delayCountdown: number
   onTestVoice: (text: string) => void
   onSaveVoiceSettings: () => void
   alertOpen: boolean
@@ -93,7 +96,10 @@ export function ScannerControls({
   onSpeechRateChange,
   speechPitch,
   onSpeechPitchChange,
+  announcementDelay,
+  onAnnouncementDelayChange,
   isSpeaking,
+  delayCountdown,
   onTestVoice,
   onSaveVoiceSettings,
   alertOpen,
@@ -337,7 +343,7 @@ export function ScannerControls({
                 ) : isSpeaking ? (
                   <>
                     <div className="w-3 h-3 mr-2 bg-white rounded-full animate-pulse"></div>
-                    Speaking...
+                    {delayCountdown > 0 ? `Announcing in ${delayCountdown}s...` : 'Speaking...'}
                   </>
                 ) : (
                   <>
@@ -547,6 +553,23 @@ export function ScannerControls({
                     ⚠️ Natural/Premium voices may not support pitch changes.
                   </span>
                 )}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="announcement-delay" className={`${config.theme.text.primary}`}>
+                Announcement Delay: {announcementDelay.toFixed(1)} seconds
+              </Label>
+              <Slider
+                id="announcement-delay"
+                min={0}
+                max={10}
+                step={0.5}
+                value={[announcementDelay]}
+                onValueChange={(v) => onAnnouncementDelayChange(v[0])}
+                className="w-full"
+              />
+              <p className={`${config.ui.typography.sizes.xs} ${config.theme.text.secondary}`}>
+                Delay before announcing scanned graduates (0 = immediate).
               </p>
             </div>
             <div className="pt-2">

@@ -14,6 +14,7 @@ interface CurrentGraduateProps {
   scanResult: { success: boolean; message: string }
   onAnnounce: () => void
   isSpeaking: boolean
+  delayCountdown: number
   previousScans: Array<{ name: string; phonetic: string; timestamp: string; id: number }>
   onAnnouncePrevious: (graduate: { name: string; phonetic: string; timestamp: string; id: number }) => void
   totalScanned: number
@@ -27,6 +28,7 @@ export function CurrentGraduate({
   scanResult,
   onAnnounce,
   isSpeaking,
+  delayCountdown,
   previousScans,
   onAnnouncePrevious,
   totalScanned,
@@ -101,7 +103,7 @@ export function CurrentGraduate({
               className={`w-full ${config.theme.primary.gradient} ${config.theme.primary.gradientHover} text-white ${isMobile ? "py-4 text-lg" : "py-3"}`}
             >
               <Volume2 className={`${isMobile ? "h-5 w-5" : "h-4 w-4"} mr-2`} />
-              {isSpeaking ? "Speaking..." : "Announce Name"}
+              {isSpeaking ? (delayCountdown > 0 ? `${delayCountdown} - Speaking...` : "Speaking...") : "Announce Name"}
             </Button>
           </div>
         ) : (
