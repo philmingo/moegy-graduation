@@ -33,41 +33,73 @@ export async function getGuestBookMessages(): Promise<GuestBookMessage[]> {
 
   const supabase = createClient()
 
-  // First, get the messages
-  const { data: messages, error } = await supabase
-    .from("voceo_guest_book_messages")
-    .select("*")
-    .eq("approved", true)
-    .order("created_at", { ascending: false })
+  // Get all messages using pagination to bypass Supabase's 1000 row limit
+  let allMessages: any[] = []
+  let from = 0
+  const pageSize = 1000
+  let hasMore = true
 
-  if (error) {
-    console.error("❌ [SERVER] getGuestBookMessages - Error:", error)
-    throw new Error(`Failed to fetch guest book messages: ${error.message}`)
+  while (hasMore) {
+    const { data: batch, error } = await supabase
+      .from("voceo_guest_book_messages")
+      .select("*")
+      .eq("approved", true)
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1)
+
+    if (error) {
+      console.error("❌ [SERVER] getGuestBookMessages - Error:", error)
+      throw new Error(`Failed to fetch guest book messages: ${error.message}`)
+    }
+
+    if (batch && batch.length > 0) {
+      allMessages = allMessages.concat(batch)
+      from += pageSize
+      hasMore = batch.length === pageSize // Continue if we got a full page
+    } else {
+      hasMore = false
+    }
   }
 
-  if (!messages || messages.length === 0) {
+  if (allMessages.length === 0) {
     console.log("✅ [SERVER] getGuestBookMessages - No messages found")
     return []
   }
 
   // Fetch student data for each message to get university, programme, and classification
-  const studentIds = messages.map(m => m.student_id)
-  const { data: students, error: studentError } = await supabase
-    .from("students")
-    .select("id, university, programme, classification")
-    .in("id", studentIds)
+  const studentIds = allMessages.map(m => m.student_id)
+  
+  // Fetch students with pagination as well
+  let allStudents: any[] = []
+  from = 0
+  hasMore = true
 
-  if (studentError) {
-    console.warn("⚠️ [SERVER] getGuestBookMessages - Failed to fetch student data:", studentError)
-    // Return messages without student data if fetch fails
-    return messages
+  while (hasMore) {
+    const { data: studentBatch, error: studentError } = await supabase
+      .from("students")
+      .select("id, university, programme, classification")
+      .in("id", studentIds)
+      .range(from, from + pageSize - 1)
+
+    if (studentError) {
+      console.warn("⚠️ [SERVER] getGuestBookMessages - Failed to fetch student data:", studentError)
+      break
+    }
+
+    if (studentBatch && studentBatch.length > 0) {
+      allStudents = allStudents.concat(studentBatch)
+      from += pageSize
+      hasMore = studentBatch.length === pageSize
+    } else {
+      hasMore = false
+    }
   }
 
   // Create a map of student data by student_id
-  const studentMap = new Map(students?.map(s => [s.id, s]) || [])
+  const studentMap = new Map(allStudents.map(s => [s.id, s]))
 
   // Merge student data into messages
-  const enrichedMessages = messages.map(message => {
+  const enrichedMessages = allMessages.map(message => {
     const student = studentMap.get(message.student_id)
     return {
       ...message,
@@ -293,23 +325,39 @@ export async function deleteAllGuestBookMessages(): Promise<void> {
   const supabase = createClient()
 
   try {
-    // Step 1: Get all messages to find their image URLs
-    const { data: messages, error: fetchError } = await supabase
-      .from("voceo_guest_book_messages")
-      .select("id, message_image_url")
+    // Get all messages using pagination to bypass Supabase's 1000 row limit
+    let allMessages: any[] = []
+    let from = 0
+    const pageSize = 1000
+    let hasMore = true
 
-    if (fetchError) {
-      console.error("❌ [SERVER] deleteAllGuestBookMessages - Fetch error:", fetchError)
-      throw new Error(`Failed to fetch messages: ${fetchError.message}`)
+    while (hasMore) {
+      const { data: batch, error: fetchError } = await supabase
+        .from("voceo_guest_book_messages")
+        .select("id, message_image_url")
+        .range(from, from + pageSize - 1)
+
+      if (fetchError) {
+        console.error("❌ [SERVER] deleteAllGuestBookMessages - Fetch error:", fetchError)
+        throw new Error(`Failed to fetch messages: ${fetchError.message}`)
+      }
+
+      if (batch && batch.length > 0) {
+        allMessages = allMessages.concat(batch)
+        from += pageSize
+        hasMore = batch.length === pageSize
+      } else {
+        hasMore = false
+      }
     }
 
-    if (!messages || messages.length === 0) {
+    if (allMessages.length === 0) {
       console.log("✅ [SERVER] deleteAllGuestBookMessages - No messages to delete")
       return
     }
 
     // Step 2: Extract all file paths and delete from storage
-    const filePaths = messages.map(message => {
+    const filePaths = allMessages.map(message => {
       const url = new URL(message.message_image_url)
       const pathParts = url.pathname.split("/")
       return pathParts.slice(pathParts.indexOf("messages")).join("/")
@@ -337,7 +385,7 @@ export async function deleteAllGuestBookMessages(): Promise<void> {
       throw new Error(`Failed to delete messages: ${deleteError.message}`)
     }
 
-    console.log(`✅ [SERVER] deleteAllGuestBookMessages - Successfully deleted ${messages.length} messages`)
+    console.log(`✅ [SERVER] deleteAllGuestBookMessages - Successfully deleted ${allMessages.length} messages`)
   } catch (error) {
     console.error("❌ [SERVER] deleteAllGuestBookMessages - Error:", error)
     throw error

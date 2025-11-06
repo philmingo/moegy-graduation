@@ -23,15 +23,35 @@ export async function getStudents(): Promise<Student[]> {
 
   const supabase = createClient()
 
-  const { data, error } = await supabase.from("students").select("*").order("first_name", { ascending: true })
+  // Get all students using pagination to bypass Supabase's 1000 row limit
+  let allStudents: Student[] = []
+  let from = 0
+  const pageSize = 1000
+  let hasMore = true
 
-  if (error) {
-    console.error("❌ [SERVER] getStudents - Error:", error)
-    throw new Error(`Failed to fetch students: ${error.message}`)
+  while (hasMore) {
+    const { data: batch, error } = await supabase
+      .from("students")
+      .select("*")
+      .order("first_name", { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (error) {
+      console.error("❌ [SERVER] getStudents - Error:", error)
+      throw new Error(`Failed to fetch students: ${error.message}`)
+    }
+
+    if (batch && batch.length > 0) {
+      allStudents = allStudents.concat(batch)
+      from += pageSize
+      hasMore = batch.length === pageSize // Continue if we got a full page
+    } else {
+      hasMore = false
+    }
   }
 
-  console.log(`✅ [SERVER] getStudents - Successfully fetched ${data?.length || 0} students`)
-  return data || []
+  console.log(`✅ [SERVER] getStudents - Successfully fetched ${allStudents.length} students`)
+  return allStudents
 }
 
 export async function addStudent(formData: FormData) {

@@ -38,64 +38,90 @@ export async function GET(request: NextRequest) {
     const allMatches: any[] = []
 
     try {
-      // First get students where first name starts with the query (highest priority)
-      const { data: firstNameMatches, error: firstNameError } = await supabase
-        .from("students")
-        .select("id, first_name, last_name, phonetic_spelling")
-        .ilike("first_name", `${sanitizedQuery}%`)
-        .order("first_name", { ascending: true })
-        .limit(10)
+      // Helper function to fetch all results with pagination
+      const fetchAllResults = async (queryBuilder: any): Promise<any[]> => {
+        let allResults: any[] = []
+        let from = 0
+        const pageSize = 1000
+        let hasMore = true
 
-      if (firstNameError) {
+        while (hasMore) {
+          const { data: batch, error } = await queryBuilder.range(from, from + pageSize - 1)
+          
+          if (error) {
+            throw error
+          }
+
+          if (batch && batch.length > 0) {
+            allResults = allResults.concat(batch)
+            from += pageSize
+            hasMore = batch.length === pageSize
+          } else {
+            hasMore = false
+          }
+        }
+
+        return allResults
+      }
+
+      // First get students where first name starts with the query (highest priority)
+      try {
+        const firstNameMatches = await fetchAllResults(
+          supabase
+            .from("students")
+            .select("id, first_name, last_name, phonetic_spelling")
+            .ilike("first_name", `${sanitizedQuery}%`)
+            .order("first_name", { ascending: true })
+        )
+        allMatches.push(...firstNameMatches)
+      } catch (firstNameError) {
         console.error("❌ [API] search-students - First name search error:", firstNameError)
-      } else {
-        allMatches.push(...(firstNameMatches || []))
       }
 
       // Then get students where last name starts with the query (medium priority)
-      const { data: lastNameMatches, error: lastNameError } = await supabase
-        .from("students")
-        .select("id, first_name, last_name, phonetic_spelling")
-        .ilike("last_name", `${sanitizedQuery}%`)
-        .order("last_name", { ascending: true })
-        .limit(10)
-
-      if (lastNameError) {
+      try {
+        const lastNameMatches = await fetchAllResults(
+          supabase
+            .from("students")
+            .select("id, first_name, last_name, phonetic_spelling")
+            .ilike("last_name", `${sanitizedQuery}%`)
+            .order("last_name", { ascending: true })
+        )
+        allMatches.push(...lastNameMatches)
+      } catch (lastNameError) {
         console.error("❌ [API] search-students - Last name search error:", lastNameError)
-      } else {
-        allMatches.push(...(lastNameMatches || []))
       }
 
       // For longer queries, also search for contains matches
       if (sanitizedQuery.length >= 2) {
-        const { data: containsMatches, error: containsError } = await supabase
-          .from("students")
-          .select("id, first_name, last_name, phonetic_spelling")
-          .or(
-            `first_name.ilike.%${sanitizedQuery}%,last_name.ilike.%${sanitizedQuery}%,phonetic_spelling.ilike.%${sanitizedQuery}%`,
+        try {
+          const containsMatches = await fetchAllResults(
+            supabase
+              .from("students")
+              .select("id, first_name, last_name, phonetic_spelling")
+              .or(
+                `first_name.ilike.%${sanitizedQuery}%,last_name.ilike.%${sanitizedQuery}%,phonetic_spelling.ilike.%${sanitizedQuery}%`,
+              )
+              .order("first_name", { ascending: true })
           )
-          .order("first_name", { ascending: true })
-          .limit(15)
-
-        if (containsError) {
+          allMatches.push(...containsMatches)
+        } catch (containsError) {
           console.error("❌ [API] search-students - Contains search error:", containsError)
-        } else {
-          allMatches.push(...(containsMatches || []))
         }
       }
 
       // Also search phonetic spelling specifically
-      const { data: phoneticMatches, error: phoneticError } = await supabase
-        .from("students")
-        .select("id, first_name, last_name, phonetic_spelling")
-        .ilike("phonetic_spelling", `${sanitizedQuery}%`)
-        .order("phonetic_spelling", { ascending: true })
-        .limit(5)
-
-      if (phoneticError) {
+      try {
+        const phoneticMatches = await fetchAllResults(
+          supabase
+            .from("students")
+            .select("id, first_name, last_name, phonetic_spelling")
+            .ilike("phonetic_spelling", `${sanitizedQuery}%`)
+            .order("phonetic_spelling", { ascending: true })
+        )
+        allMatches.push(...phoneticMatches)
+      } catch (phoneticError) {
         console.error("❌ [API] search-students - Phonetic search error:", phoneticError)
-      } else {
-        allMatches.push(...(phoneticMatches || []))
       }
     } catch (dbError) {
       console.error("❌ [API] search-students - Database query error:", dbError)
