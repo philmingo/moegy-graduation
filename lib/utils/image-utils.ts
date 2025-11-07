@@ -4,7 +4,7 @@ export async function downloadQRCardAsImage(node: HTMLElement, fileName = "qr-ca
   try {
     const dataUrl = await toPng(node, {
       cacheBust: true,
-      pixelRatio: 2,
+      pixelRatio: 3,
       backgroundColor: "#1e1b4b", // fallback if no background
       width: node.offsetWidth,
       height: node.offsetHeight,
@@ -30,7 +30,7 @@ export async function copyQRCardAsImage(node: HTMLElement) {
   try {
     const dataUrl = await toPng(node, {
       cacheBust: true,
-      pixelRatio: 2,
+      pixelRatio: 3,
       backgroundColor: "#1e1b4b",
       width: node.offsetWidth,
       height: node.offsetHeight,

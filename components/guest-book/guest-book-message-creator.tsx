@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { QrScanner } from "@/components/qr-scanner"
+import { ZXingScanner } from "@/components/zxing-scanner"
 import { HandwritingCanvas } from "./handwriting-canvas"
 import { CameraPhotoModal } from "./camera-photo-modal"
 import { type Student } from "@/lib/actions/students"
@@ -37,7 +37,59 @@ export function GuestBookMessageCreator({
   const [isSaving, setIsSaving] = useState(false)
   const [isScannerActive, setIsScannerActive] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [canvasDimensions, setCanvasDimensions] = useState({ width: 1200, height: 600 })
   const theme = currentTheme
+
+  // Calculate responsive canvas dimensions based on viewport
+  const getCanvasDimensions = useCallback(() => {
+    if (typeof window === 'undefined') return { width: 1200, height: 600 }
+    
+    const vw = window.innerWidth
+    
+    // Mobile portrait (320-639px)
+    if (vw < 640) {
+      const width = Math.min(vw - 80, 360) // Account for modal padding + margin
+      return { width, height: width / 2 }
+    }
+    
+    // Mobile landscape / Small tablet (640-1023px)
+    if (vw < 1024) {
+      const width = Math.min(vw - 120, 800) // Account for padding
+      return { width, height: width / 2 }
+    }
+    
+    // Tablet landscape / Small laptop (1024-1365px)
+    if (vw < 1366) {
+      const width = 1000 // Safe size for smaller laptops
+      return { width, height: 500 }
+    }
+    
+    // Desktop (1366px+) - Full canvas
+    return { width: 1200, height: 600 }
+  }, [])
+
+  // Update canvas dimensions on window resize
+  useEffect(() => {
+    const updateDimensions = () => {
+      setCanvasDimensions(getCanvasDimensions())
+    }
+    
+    // Set initial dimensions
+    updateDimensions()
+    
+    // Update on resize with debouncing
+    let timeoutId: NodeJS.Timeout
+    const handleResize = () => {
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(updateDimensions, 150)
+    }
+    
+    window.addEventListener('resize', handleResize)
+    return () => {
+      clearTimeout(timeoutId)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [getCanvasDimensions])
 
   // Filter students with proper prioritization (same as scanner page)
   const filteredStudents = useMemo(() => {
@@ -96,8 +148,9 @@ export function GuestBookMessageCreator({
     return suppressCameraAbortWarnings()
   }, [])
 
-  // Handle QR scan
+  // Handle QR scan - ZXingScanner passes validated Student object
   const handleScan = useCallback((studentData: Student) => {
+    console.log("✅ [GUEST-BOOK] Student scanned:", studentData)
     setScannedStudent(studentData)
     setIsScannerActive(false)
     setStep("draw")
@@ -208,7 +261,10 @@ export function GuestBookMessageCreator({
       case "search":
         return "max-w-xl"
       case "draw":
-        return "max-w-6xl"
+        // Responsive sizing: full width on mobile/tablet, max-w-7xl on desktop
+        return typeof window !== 'undefined' && window.innerWidth < 1366 
+          ? "max-w-full mx-4" 
+          : "max-w-7xl"
       default:
         return "max-w-lg"
     }
@@ -288,7 +344,7 @@ export function GuestBookMessageCreator({
                 Scan the student's QR code to identify them
               </p>
               <div className="w-full h-[500px] rounded-xl overflow-hidden">
-                <QrScanner
+                <ZXingScanner
                   onScan={handleScan}
                   onError={handleScanError}
                   students={students}
@@ -423,11 +479,11 @@ export function GuestBookMessageCreator({
                 </p>
               </div>
 
-              {/* Canvas - Rectangle format to match message card */}
+              {/* Canvas - Rectangle format to match message card - Responsive dimensions */}
               <HandwritingCanvas
                 onImageChange={handleImageChange}
-                width={1200}
-                height={600}
+                width={canvasDimensions.width}
+                height={canvasDimensions.height}
                 onAttachPhoto={() => setIsCameraModalOpen(true)}
                 studentPhotoData={studentPhotoData}
                 onRemovePhoto={() => setStudentPhotoData("")}

@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Camera, Play, Square, Search, Settings, QrCode, X, Volume2, RotateCcw } from "lucide-react"
-import { QrScanner } from "@/components/qr-scanner"
+import { ZXingScanner } from "@/components/zxing-scanner"
 import { type Student } from "@/lib/actions/students"
 import config from "@/lib/theme-config"
 
@@ -33,7 +33,7 @@ interface ScannerControlsProps {
   scanning: boolean
   onStartScanning: () => void
   onStopScanning: () => void
-  onScan: (data: string) => void
+  onScan: (studentData: Student) => void
   scannerKey: number
   currentCamera: "environment" | "user"
   onCameraSwitch: () => void
@@ -222,9 +222,9 @@ export function ScannerControls({
           {scanning ? (
             <div className="w-full h-full relative" ref={scannerContainerRef} key={scannerKey}>
               <div className="w-full h-full overflow-hidden rounded-xl">
-                <QrScanner
+                <ZXingScanner
                   onScan={onScan}
-                  onError={(error) => {
+                  onError={(error: string) => {
                     console.error("QR Scanner Error:", error)
                   }}
                   className="w-full h-full"

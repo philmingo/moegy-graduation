@@ -189,9 +189,23 @@ export default function StudentQRSearch() {
   // Check admin login status using Supabase
   useEffect(() => {
     const checkAuthStatus = async () => {
-      const supabase = (await import("@/lib/supabase")).createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      setIsAdminLoggedIn(!!session)
+      try {
+        const supabase = (await import("@/lib/supabase")).createClient()
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        // Silently handle auth errors - this is a public page, user doesn't need to be logged in
+        if (error) {
+          console.warn("Auth session check failed (expected for non-logged in users):", error.message)
+          setIsAdminLoggedIn(false)
+          return
+        }
+        
+        setIsAdminLoggedIn(!!session)
+      } catch (error) {
+        // Catch any unexpected errors
+        console.error("Unexpected error checking auth status:", error)
+        setIsAdminLoggedIn(false)
+      }
     }
 
     checkAuthStatus()
@@ -205,6 +219,8 @@ export default function StudentQRSearch() {
       })
       
       cleanup = () => subscription.unsubscribe()
+    }).catch(error => {
+      console.error("Error setting up auth state listener:", error)
     })
 
     return () => {
@@ -577,7 +593,7 @@ export default function StudentQRSearch() {
         {/* Responsive Header - Hidden when searching */}
         <div
           className={cn(
-            `container mx-auto ${isMobile ? "px-4 py-8" : config.ui.spacing.padding.page} ${config.ui.spacing.container.max}`,
+            `container mx-auto ${isMobile ? "px-4 pt-24 pb-8" : config.ui.spacing.padding.page} ${config.ui.spacing.container.max}`,
             searchQuery
               ? "transform -translate-y-32 scale-90 opacity-0 h-0 overflow-hidden"
               : "transform translate-y-0 scale-100 opacity-100",
@@ -630,14 +646,14 @@ export default function StudentQRSearch() {
         </div>
 
         {/* Responsive Admin/Dashboard and Guest Book Buttons */}
-        <div className={`${isMobile ? "fixed top-4 right-4" : "absolute top-6 right-6"} z-20 flex gap-3`}>
+        <div className="fixed top-4 right-4 z-20 flex flex-wrap gap-2 justify-end max-w-[calc(100vw-2rem)]">
           {/* Guest Book Button */}
           <Link href="/student-qr-portal/guest-book">
             <Button
-              className={`bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white ${isMobile ? "px-4 py-2 text-sm" : "px-6 py-2"} ${config.ui.borderRadius.small} ${config.ui.shadows.medium} hover:${config.ui.shadows.large} transition-all duration-300`}
+              className={`bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white ${isMobile ? "px-3 py-2 text-xs" : "px-4 sm:px-6 py-2 text-sm sm:text-base"} ${config.ui.borderRadius.small} ${config.ui.shadows.medium} hover:${config.ui.shadows.large} transition-all duration-300`}
             >
-              <MessageSquare className={`${isMobile ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
-              {isMobile ? "Guest Book" : "Guest Book"}
+              <MessageSquare className={`${isMobile ? "h-3 w-3" : "h-3.5 w-3.5 sm:h-4 sm:w-4"} mr-1 sm:mr-2`} />
+              <span className="whitespace-nowrap">Guest Book</span>
             </Button>
           </Link>
 
@@ -645,19 +661,19 @@ export default function StudentQRSearch() {
           {isAdminLoggedIn ? (
             <Link href="/admin">
               <Button
-                className={`${config.theme.primary.gradient} ${config.theme.primary.gradientHover} text-white ${isMobile ? "px-4 py-2 text-sm" : "px-6 py-2"} ${config.ui.borderRadius.small} ${config.ui.shadows.medium} hover:${config.ui.shadows.large} transition-all duration-300`}
+                className={`${config.theme.primary.gradient} ${config.theme.primary.gradientHover} text-white ${isMobile ? "px-3 py-2 text-xs" : "px-4 sm:px-6 py-2 text-sm sm:text-base"} ${config.ui.borderRadius.small} ${config.ui.shadows.medium} hover:${config.ui.shadows.large} transition-all duration-300`}
               >
-                <LayoutDashboard className={`${isMobile ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
-                {isMobile ? "Dashboard" : "Admin Dashboard"}
+                <LayoutDashboard className={`${isMobile ? "h-3 w-3" : "h-3.5 w-3.5 sm:h-4 sm:w-4"} mr-1 sm:mr-2`} />
+                <span className="whitespace-nowrap">{isMobile ? "Dashboard" : "Admin Dashboard"}</span>
               </Button>
             </Link>
           ) : (
             <Link href="/login">
               <Button
-                className={`${config.theme.primary.gradient} ${config.theme.primary.gradientHover} text-white ${isMobile ? "px-4 py-2 text-sm" : "px-6 py-2"} ${config.ui.borderRadius.small} ${config.ui.shadows.medium} hover:${config.ui.shadows.large} transition-all duration-300`}
+                className={`${config.theme.primary.gradient} ${config.theme.primary.gradientHover} text-white ${isMobile ? "px-3 py-2 text-xs" : "px-4 sm:px-6 py-2 text-sm sm:text-base"} ${config.ui.borderRadius.small} ${config.ui.shadows.medium} hover:${config.ui.shadows.large} transition-all duration-300`}
               >
-                <User className={`${isMobile ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
-                {isMobile ? "Login" : "Admin Login"}
+                <User className={`${isMobile ? "h-3 w-3" : "h-3.5 w-3.5 sm:h-4 sm:w-4"} mr-1 sm:mr-2`} />
+                <span className="whitespace-nowrap">{isMobile ? "Login" : "Admin Login"}</span>
               </Button>
             </Link>
           )}

@@ -204,9 +204,10 @@ export function CameraPhotoModal({
         className={`
           ${theme.modal.background} 
           ${theme.modal.border}
-          w-[95vw] h-[95vh] max-w-2xl
-          sm:w-[90vw] sm:h-[90vh] md:w-[85vw] lg:w-[75vw] xl:max-w-3xl
+          w-[95vw] sm:w-[85vw] md:w-[75vw] lg:w-[600px] max-w-[600px]
+          max-h-[85vh] overflow-y-auto
           flex flex-col
+          p-4 sm:p-6
         `}
       >
         <DialogHeader className="flex-shrink-0 relative">
@@ -222,9 +223,16 @@ export function CameraPhotoModal({
           </button>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col gap-3 sm:gap-4 min-h-0">
-          {/* Camera/Photo Preview - Portrait aspect ratio to match message card */}
-          <div className="relative w-full flex-1 bg-black rounded-lg sm:rounded-xl overflow-hidden">
+        <div className="flex flex-col gap-3 sm:gap-4 py-4">
+          {/* Camera/Photo Preview - Portrait aspect ratio (3:4) to match message card */}
+          <div 
+            className="relative w-full bg-black rounded-lg sm:rounded-xl overflow-hidden mx-auto"
+            style={{ 
+              aspectRatio: '3/4', 
+              maxHeight: '55vh',
+              maxWidth: 'min(100%, calc(55vh * 0.75))'
+            }}
+          >
             {!capturedPhoto ? (
               <>
                 {/* Live Video Feed */}
@@ -274,12 +282,12 @@ export function CameraPhotoModal({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-between items-stretch sm:items-center px-2 sm:px-0 flex-shrink-0">
+          <div className="flex flex-col gap-3 flex-shrink-0">
             {!capturedPhoto ? (
               <>
-                {/* Camera Selection - Bottom Left */}
-                <div className="flex items-center gap-2 order-2 sm:order-1">
-                  {availableCameras.length > 0 && (
+                {/* Camera Selection */}
+                {availableCameras.length > 0 && (
+                  <div className="w-full">
                     <Select
                       value={selectedCamera}
                       onValueChange={(value) => {
@@ -288,7 +296,7 @@ export function CameraPhotoModal({
                       }}
                       disabled={isCapturing}
                     >
-                      <SelectTrigger className={`px-2 sm:px-3 py-2 rounded-lg ${theme.glass.standard} ${theme.text.primary} border-0 text-xs sm:text-sm disabled:opacity-50 w-full sm:w-auto min-w-[180px]`}>
+                      <SelectTrigger className={`w-full px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg ${theme.glass.standard} ${theme.text.primary} border-0 text-xs sm:text-sm disabled:opacity-50`}>
                         <SelectValue placeholder="Select camera" />
                       </SelectTrigger>
                       <SelectContent>
@@ -299,17 +307,17 @@ export function CameraPhotoModal({
                         ))}
                       </SelectContent>
                     </Select>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                {/* Right Side Buttons */}
-                <div className="flex gap-2 sm:gap-3 order-1 sm:order-2">
+                {/* Action Buttons Row */}
+                <div className="flex gap-2 w-full">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={handleClose}
                     disabled={isCapturing}
-                    className={`${theme.glass.standard} ${theme.text.primary} flex-1 sm:flex-none text-sm sm:text-base`}
+                    className={`${theme.glass.standard} ${theme.text.primary} flex-1 text-xs sm:text-sm py-2 sm:py-2.5 px-2 sm:px-4`}
                   >
                     <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                     Cancel
@@ -318,22 +326,22 @@ export function CameraPhotoModal({
                     type="button"
                     onClick={startCountdownAndCapture}
                     disabled={isCapturing || !stream}
-                    className={`${theme.primary.gradient} flex-1 sm:flex-none text-sm sm:text-base`}
+                    className={`${theme.primary.gradient} flex-1 text-xs sm:text-sm py-2 sm:py-2.5 px-2 sm:px-4`}
                   >
                     <Camera className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                    {isCapturing ? "Capturing..." : "Capture Photo"}
+                    {isCapturing ? "Capturing..." : "Capture"}
                   </Button>
                 </div>
               </>
             ) : (
               <>
-                <div className="hidden sm:block" /> {/* Spacer for alignment on larger screens */}
-                <div className="flex gap-2 sm:gap-3 justify-end">
+                {/* Review Buttons Row */}
+                <div className="flex gap-2 w-full">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={handleRetake}
-                    className={`${theme.glass.standard} ${theme.text.primary} flex-1 sm:flex-none text-sm sm:text-base`}
+                    className={`${theme.glass.standard} ${theme.text.primary} flex-1 text-xs sm:text-sm py-2 sm:py-2.5 px-2 sm:px-4`}
                   >
                     <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                     Retake
@@ -341,10 +349,10 @@ export function CameraPhotoModal({
                   <Button
                     type="button"
                     onClick={handleConfirm}
-                    className={`${theme.primary.gradient} flex-1 sm:flex-none text-sm sm:text-base`}
+                    className={`${theme.primary.gradient} flex-1 text-xs sm:text-sm py-2 sm:py-2.5 px-2 sm:px-4`}
                   >
                     <Check className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                    Confirm Photo
+                    Confirm
                   </Button>
                 </div>
               </>

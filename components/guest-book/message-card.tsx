@@ -25,13 +25,14 @@ export function MessageCard({
         {/* Left Side - Photo/Gradient - Fixed size regardless of photo */}
         <CardHeader className={`sm:col-span-3 bg-gradient-to-br from-violet-400 via-purple-400 to-pink-400 p-4 sm:p-6 flex flex-col justify-center items-center`}>
           {hasStudentPhoto ? (
-            // When student has a photo - Photo fills width with percentage height
+            // When student has a photo - Photo fills width with percentage height (Portrait 3:4 ratio)
             <div className="w-full h-full flex flex-col justify-center items-center gap-2 sm:gap-3 md:gap-4">
               <div className="w-full h-[70%] flex items-center justify-center rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-4 border-white/30 bg-white/5">
                 <img
                   src={message.student_photo_url!}
                   alt={message.student_name}
                   className="w-full h-full object-cover object-center"
+                  style={{ aspectRatio: '3/4' }}
                 />
               </div>
               

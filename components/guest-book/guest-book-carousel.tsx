@@ -33,11 +33,36 @@ export function GuestBookCarousel({
   const [count, setCount] = useState(0)
   const [isHovered, setIsHovered] = useState(false)
   const [isManuallyInteracting, setIsManuallyInteracting] = useState(false)
+  const [dpiScale, setDpiScale] = useState(1)
   const autoplayRef = useRef<NodeJS.Timeout | null>(null)
   const manualInteractionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const theme = currentTheme
 
   console.log(`🎠 [CAROUSEL] Component render - messages.length: ${messages.length}, displayed count: ${count}`)
+
+  // Calculate appropriate scale factor based on DPI to prevent content overflow
+  useEffect(() => {
+    const calculateScale = () => {
+      const dpr = window.devicePixelRatio || 1
+      
+      // On high-DPI displays (>2), reduce the scale factor to prevent overflow
+      // On normal displays (1-2), use full scale
+      if (dpr >= 3) {
+        // 300% scaling - reduce scale significantly
+        setDpiScale(0.9)
+      } else if (dpr >= 2) {
+        // 200% scaling - reduce scale moderately  
+        setDpiScale(0.95)
+      } else {
+        // Normal DPI - use full scale
+        setDpiScale(1)
+      }
+    }
+
+    calculateScale()
+    window.addEventListener('resize', calculateScale)
+    return () => window.removeEventListener('resize', calculateScale)
+  }, [])
 
   // Clear all timers on unmount
   useEffect(() => {
@@ -247,11 +272,14 @@ export function GuestBookCarousel({
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className={`relative w-full max-w-7xl ${isFullscreen ? 'flex-1 flex items-center justify-center' : 'flex-shrink'}`}>
-        <div className={`w-full transition-all duration-300 ${
-          isFullscreen 
-            ? 'scale-[1.15] sm:scale-[1.2] md:scale-[1.25] lg:scale-[1.3] xl:scale-[1.35] origin-center' 
-            : 'scale-100'
-        }`}>
+        <div 
+          className="w-full transition-all duration-300"
+          style={isFullscreen ? {
+            // Apply DPI-aware scaling to maintain aspect ratio without overflow
+            transform: `scale(${1.15 * dpiScale})`,
+            transformOrigin: 'center'
+          } : undefined}
+        >
         <Carousel
           opts={{
             align: "center",

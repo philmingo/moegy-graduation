@@ -138,15 +138,56 @@ export async function deleteManyStudents(ids: string[]) {
 
   const supabase = createClient()
 
-  const { error } = await supabase.from("students").delete().in("id", ids)
-
-  if (error) {
-    console.error("❌ [SERVER] deleteManyStudents - Error:", error)
-    throw new Error(`Failed to delete students: ${error.message}`)
+  // Supabase has limitations on batch operations
+  // Process deletions in chunks of 100 to avoid "Bad Request" errors
+  const CHUNK_SIZE = 100
+  const chunks = []
+  
+  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+    chunks.push(ids.slice(i, i + CHUNK_SIZE))
   }
 
-  console.log("✅ [SERVER] deleteManyStudents - Successfully deleted students:", ids.length)
-  return { deletedCount: ids.length }
+  console.log(`🔄 [SERVER] deleteManyStudents - Processing ${chunks.length} chunks`)
+
+  let totalDeleted = 0
+  const errors = []
+
+  // Process each chunk sequentially to avoid overwhelming the database
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]
+    console.log(`🔄 [SERVER] deleteManyStudents - Processing chunk ${i + 1}/${chunks.length} (${chunk.length} students)`)
+
+    try {
+      const { error, count } = await supabase
+        .from("students")
+        .delete({ count: 'exact' })
+        .in("id", chunk)
+
+      if (error) {
+        console.error(`❌ [SERVER] deleteManyStudents - Error in chunk ${i + 1}:`, error)
+        errors.push({ chunk: i + 1, error: error.message })
+      } else {
+        totalDeleted += count || chunk.length
+        console.log(`✅ [SERVER] deleteManyStudents - Chunk ${i + 1} deleted successfully (${count || chunk.length} students)`)
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error"
+      console.error(`❌ [SERVER] deleteManyStudents - Unexpected error in chunk ${i + 1}:`, errorMessage)
+      errors.push({ chunk: i + 1, error: errorMessage })
+    }
+  }
+
+  // Report any errors
+  if (errors.length > 0) {
+    console.error(`❌ [SERVER] deleteManyStudents - Failed to delete some chunks:`, errors)
+    throw new Error(
+      `Partially completed: ${totalDeleted}/${ids.length} students deleted. ` +
+      `${errors.length} chunk(s) failed. Check server logs for details.`
+    )
+  }
+
+  console.log(`✅ [SERVER] deleteManyStudents - Successfully deleted ${totalDeleted} students`)
+  return { deletedCount: totalDeleted }
 }
 
 export async function markStudentAsShared(id: string) {

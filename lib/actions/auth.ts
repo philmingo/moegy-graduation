@@ -77,6 +77,7 @@ export async function signOut(): Promise<{ error: string | null }> {
 /**
  * Get current session
  * Returns null if no active session
+ * Handles expired/invalid sessions gracefully
  */
 export async function getSession(): Promise<{ user: AuthUser | null; error: string | null }> {
   try {
@@ -88,6 +89,13 @@ export async function getSession(): Promise<{ user: AuthUser | null; error: stri
     } = await supabase.auth.getSession()
 
     if (error) {
+      // Handle specific auth errors gracefully
+      if (error.message.includes("refresh_token_not_found") || error.message.includes("Invalid Refresh Token")) {
+        // This is expected when user is not logged in
+        console.info("ℹ️ [AUTH] No active session (user not logged in)")
+        return { user: null, error: null }
+      }
+      
       console.error("❌ [AUTH] Get session error:", error.message)
       return { user: null, error: error.message }
     }
